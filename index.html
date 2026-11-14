@@ -45,6 +45,8 @@
   tr.click{cursor:pointer} tr.click:hover td{background:#f7fafd}
   .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
   .tile{background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .tile.click{cursor:pointer}
+  .tile.click:hover{border-color:var(--muted)}
   .tile .k{font-size:12px;color:var(--muted)}
   .tile .v{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
   .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
@@ -703,7 +705,7 @@ const mismatch = (r) => !r.fee && r.receipt_amount != null && !r.miles && Math.a
 async function drawReview() {
   $('#main').innerHTML = `
     <div class="row" style="margin-bottom:14px">${monthPicker('rm')}
-      <div><label>Show</label><select id="flt"><option value="all">Everything</option><option value="wait">Waiting for review</option><option value="back">Sent back</option><option value="bill">Billable only</option><option value="nb">Company expenses only</option><option value="unbilled">Approved, not yet billed</option><option value="unpaid">Approved, not yet reimbursed</option><option value="dup">Possible duplicates</option></select></div>
+      <div><label>Show</label><select id="flt"><option value="all">Everything</option><option value="wait">Waiting for your review</option><option value="back">Sent back, waiting on staff</option><option value="bill">Billable only</option><option value="nb">Company expenses only</option><option value="unbilled">Approved, not yet billed</option><option value="unpaid">Approved, not yet reimbursed</option><option value="dup">Possible duplicates</option></select></div>
       <span class="sp"></span>
       <button id="appAll">Approve all waiting</button>
       <button class="pri" id="exp">Download FreshBooks file</button>
@@ -740,7 +742,7 @@ async function setClosed(month, closed) {
 function paintReview() {
   if (!$('#rv')) return;
   const R = S.R, f = $('#flt').value, locked = isClosed(S.month);
-  const bill = R.filter(r => r.billable && !r.fee), fees = R.filter(r => r.fee), nb = R.filter(r => !r.billable), wait = R.filter(r => r.status === 'submitted');
+  const bill = R.filter(r => r.billable && !r.fee), fees = R.filter(r => r.fee), nb = R.filter(r => !r.billable), wait = R.filter(r => r.status === 'submitted'), back = R.filter(r => r.status === 'returned');
   const ok = R.filter(r => r.status === 'approved'), unbilled = ok.filter(r => r.billable && !r.billed_on), unpaid = ok.filter(r => !r.fee && !r.reimbursed_on);
   const dups = R.filter(r => r.dup).length;
   const show = R.filter(r => f === 'all' || (f === 'wait' && r.status === 'submitted') || (f === 'back' && r.status === 'returned') || (f === 'bill' && r.billable) || (f === 'nb' && !r.billable) ||
@@ -753,13 +755,14 @@ function paintReview() {
              : `<div class="row" style="justify-content:flex-end;margin-bottom:8px"><button class="sm" id="close">Close ${monthName(S.month)}</button></div>`}
     <div class="tiles">
       <div class="tile"><div class="k">To bill clients, ${monthName(S.month)}</div><div class="v">${money(sum(bill) + sum(fees))}</div></div>
-      <div class="tile"><div class="k">Approved, not yet billed</div><div class="v" style="color:${unbilled.length ? 'var(--warn)' : 'var(--ok)'}">${money(sum(unbilled))}</div></div>
-      <div class="tile"><div class="k">Owed to staff</div><div class="v" style="color:${unpaid.length ? 'var(--warn)' : 'var(--ok)'}">${money(sum(unpaid))}</div></div>
-      <div class="tile"><div class="k">Company expenses (${nb.length})</div><div class="v">${money(sum(nb))}</div></div>
-      <div class="tile"><div class="k">Waiting for review</div><div class="v" style="color:${wait.length ? 'var(--warn)' : 'var(--ok)'}">${wait.length}</div></div>
-      <div class="tile"><div class="k">Possible duplicates</div><div class="v" style="color:${dups ? 'var(--bad)' : 'var(--ok)'}">${dups}</div></div>
+      <div class="tile click" data-f="unbilled"><div class="k">Approved, not yet billed</div><div class="v" style="color:${unbilled.length ? 'var(--warn)' : 'var(--ok)'}">${money(sum(unbilled))}</div></div>
+      <div class="tile click" data-f="unpaid"><div class="k">Owed to staff</div><div class="v" style="color:${unpaid.length ? 'var(--warn)' : 'var(--ok)'}">${money(sum(unpaid))}</div></div>
+      <div class="tile click" data-f="nb"><div class="k">Company expenses (${nb.length})</div><div class="v">${money(sum(nb))}</div></div>
+      <div class="tile click" data-f="wait"><div class="k">Waiting for your review</div><div class="v" style="color:${wait.length ? 'var(--warn)' : 'var(--ok)'}">${wait.length}</div></div>
+      <div class="tile click" data-f="back"><div class="k">Sent back, waiting on staff</div><div class="v" style="color:${back.length ? 'var(--warn)' : 'var(--ok)'}">${back.length}</div></div>
+      <div class="tile click" data-f="dup"><div class="k">Possible duplicates</div><div class="v" style="color:${dups ? 'var(--bad)' : 'var(--ok)'}">${dups}</div></div>
     </div>
-    <div class="card scroll">${!show.length ? `<p class="muted">No entries match for ${monthName(S.month)}.</p>` : `
+    <div class="card scroll">${!show.length ? `<p class="muted">${f === 'wait' ? `Nothing is waiting for your review in ${monthName(S.month)}.` + (back.length ? ` ${back.length} entr${back.length === 1 ? 'y is' : 'ies are'} with staff after being sent back. <a href="#" id="seeBack">Show</a>` : '') : `No entries match for ${monthName(S.month)}.`}</p>` : `
     <table><thead><tr><th>Date</th><th>Employee</th><th>Paid to / note</th><th>Type</th><th>Project</th><th class="n">Amount</th><th>Status</th><th></th></tr></thead><tbody>` +
     keys.map(k => `<tr class="grp"><td colspan="5">${h(k)}</td><td class="n">${money(sum(groups[k]))}</td><td colspan="2"></td></tr>` +
       groups[k].sort((a, b) => a.date.localeCompare(b.date)).map(r => `<tr class="${r.billable ? '' : 'off'} ${r.fee ? '' : 'click'}" data-open="${r.fee ? '' : r.id}"><td class="nw">${r.date}</td><td>${h(r.employee_name)}</td>
@@ -769,6 +772,9 @@ function paintReview() {
         <td class="nw">${locked ? '' : (r.status !== 'approved' ? `<button class="sm" data-a="ok:${r.t}:${r.id}">Approve</button> ` : '') + (r.status !== 'returned' ? `<button class="sm" data-a="back:${r.t}:${r.id}">Send back</button> ` : '')}${r.fee ? (locked ? '' : `<button class="sm danger" data-a="del:${r.t}:${r.id}">Delete</button>`) : `<button class="sm" data-a="open:${r.t}:${r.id}">Open</button>`}</td></tr>`).join('')).join('') +
     `</tbody></table>`}</div>`;
   const rv = $('#rv');
+  const setF = v => { $('#flt').value = v; paintReview(); };
+  rv.querySelectorAll('.tile[data-f]').forEach(t => t.onclick = () => setF($('#flt').value === t.dataset.f ? 'all' : t.dataset.f));
+  if ($('#seeBack')) $('#seeBack').onclick = e => { e.preventDefault(); setF('back'); };
   if ($('#reopen')) $('#reopen').onclick = async () => { if (await ask(`Reopen ${monthName(S.month)} so entries can be changed again?`, 'Reopen')) { await setClosed(S.month, false); paintReview(); } };
   if ($('#close')) $('#close').onclick = async () => {
     if (wait.length && !(await ask(`${wait.length} entr${wait.length === 1 ? 'y is' : 'ies are'} still waiting for review. Close ${monthName(S.month)} anyway?`, 'Close month'))) return;
