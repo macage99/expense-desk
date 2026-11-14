@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Expense Desk</title>
+<style>
+  :root{--ink:#17202a;--muted:#5d6b7a;--line:#dfe5ec;--bg:#f4f6f9;--card:#fff;--brand:#1f4e79;--brand2:#2e75b6;--ok:#1e7d4f;--warn:#b26a00;--bad:#b3261e;--soft:#eaf1f8}
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.45 "Segoe UI",system-ui,-apple-system,Arial,sans-serif;color:var(--ink);background:var(--bg)}
+  header{background:var(--brand);color:#fff;padding:12px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  header h1{font-size:18px;margin:0;font-weight:600}
+  header .co{opacity:.8;font-size:13px}
+  header button{background:transparent;border:1px solid rgba(255,255,255,.5);color:#fff}
+  nav{display:flex;gap:4px;background:#fff;border-bottom:1px solid var(--line);padding:0 16px;overflow-x:auto}
+  nav button{border:0;background:none;padding:12px 14px;font:inherit;color:var(--muted);border-bottom:3px solid transparent;border-radius:0;cursor:pointer;white-space:nowrap}
+  nav button.on{color:var(--brand);border-color:var(--brand2);font-weight:600}
+  main{max-width:1240px;margin:0 auto;padding:18px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+  .card h2{margin:0 0 12px;font-size:16px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+  label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+  input,select,textarea{width:100%;padding:9px 10px;border:1px solid #c5ced8;border-radius:7px;font:inherit;background:#fff;color:var(--ink)}
+  input[type=checkbox]{width:auto;margin-right:6px}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--brand2);outline-offset:0;border-color:var(--brand2)}
+  button{font:inherit;padding:9px 14px;border-radius:7px;border:1px solid #c5ced8;background:#fff;cursor:pointer;color:var(--ink)}
+  button:hover{background:#f3f6fa}
+  button.pri{background:var(--brand2);border-color:var(--brand2);color:#fff;font-weight:600}
+  button.pri:hover{background:#2767a3}
+  button.sm{padding:4px 9px;font-size:13px}
+  button.danger{color:var(--bad)}
+  button:disabled{opacity:.5;cursor:default}
+  .row{display:flex;gap:10px;align-items:end;flex-wrap:wrap}
+  .sp{flex:1}
+  .seg{display:inline-flex;border:1px solid #c5ced8;border-radius:7px;overflow:hidden;flex-wrap:wrap}
+  .seg button{border:0;border-radius:0;background:#fff}
+  .seg button.on{background:var(--soft);color:var(--brand);font-weight:600}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th{font-size:12px;text-align:left;color:var(--muted);font-weight:600;padding:8px;border-bottom:1px solid var(--line);white-space:nowrap}
+  td{padding:8px;border-bottom:1px solid #eef1f5;vertical-align:middle}
+  td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  td.nw{white-space:nowrap}
+  tr.grp td{background:var(--soft);font-weight:600;color:var(--brand)}
+  tr.off td{color:#7a8794}
+  tr.click{cursor:pointer} tr.click:hover td{background:#f7fafd}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+  .tile{background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .tile .k{font-size:12px;color:var(--muted)}
+  .tile .v{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+  .pill.submitted{background:#fff4e0;color:var(--warn)} .pill.approved{background:#e3f4ea;color:var(--ok)}
+  .pill.returned,.pill.bad{background:#fdecea;color:var(--bad)}
+  .pill.nb{background:#eceff3;color:var(--muted)} .pill.fee,.pill.info{background:#e8eefc;color:#2b4aa0}
+  .msg{padding:10px 12px;border-radius:7px;margin:10px 0;font-size:14px}
+  .msg.err{background:#fdecea;color:var(--bad)} .msg.ok{background:#e3f4ea;color:var(--ok)} .msg.lock{background:#eceff3;color:var(--ink)}
+  .muted{color:var(--muted)} .hide{display:none!important}
+  .auth{max-width:400px;margin:8vh auto}
+  .auth .card{padding:24px} .auth h2{font-size:20px} .auth .f{margin-bottom:12px}
+  .link{background:none;border:0;color:var(--brand2);padding:0;cursor:pointer;text-decoration:underline}
+  .scroll{overflow-x:auto}
+  .modal{position:fixed;inset:0;background:rgba(15,25,40,.6);display:flex;align-items:center;justify-content:center;padding:16px;z-index:9}
+  .modal .box{background:#fff;border-radius:10px;padding:16px;max-width:min(900px,96vw);max-height:92vh;overflow:auto}
+  .modal img{max-width:100%;display:block}
+  .modal iframe{width:min(860px,90vw);height:78vh;border:0}
+  .recbar{background:var(--soft);border:1px dashed #9db7d3;border-radius:8px;padding:10px 12px;margin-bottom:12px}
+  .hist{font-size:13px;border-top:1px solid var(--line);margin-top:12px;padding-top:8px}
+  .hist div{padding:4px 0;border-bottom:1px solid #f0f3f6}
+  .filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+  @media(max-width:640px){main{padding:10px}.card{padding:12px}th,td{padding:6px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Expense Desk</h1><span class="co" id="co"></span><span class="sp"></span>
+  <span id="who" class="co"></span><button id="out" class="sm hide">Sign out</button>
+</header>
+<nav id="nav" class="hide"></nav>
+<main id="main"></main>
+<datalist id="vlist"></datalist>
+
+<script>
+// ---------- connection ----------
+const INSTANCE = '55850_ginsberg_libby_expenses';
+const AUTH = 'https://app.nocodebackend.com/api/user-auth';
+const DATA = 'https://app.nocodebackend.com/api/data';
+// Web address of the Google Drive receipt go-between (blank = receipts switched off)
+const RECEIPTS_URL = 'https://script.google.com/macros/s/AKfycbzQ2k-17vfI-3vOTHJkjAmhKb1r0f2ksdMOBlNGaP7D4SE_2NdTq7h8SdhHyBLF4NfJ9w/exec';
+const S = {token: localStorage.getItem('xd_token'), user: null, tab: null, L: {}, month: null, vendorMap: {}};
+const $ = (q, el = document) => el.querySelector(q);
+const h = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const money = (n) => (Number(n) || 0).toLocaleString('en-US', {style:'currency', currency:'USD'});
+const today = () => new Date().toLocaleDateString('en-CA');
+const monthName = (m) => new Date(m + '-15').toLocaleDateString('en-US', {month:'long', year:'numeric'});
+const numOrNull = (v) => (v == null || v === '' || isNaN(v) ? null : Number(v));
+const sum = (a) => a.reduce((s, r) => s + r.amt, 0);
+
+async function api(base, path, method = 'GET', body) {
+  const url = base + path + (path.includes('?') ? '&' : '?') + 'Instance=' + INSTANCE;
+  const headers = {'Content-Type':'application/json', 'X-Database-Instance': INSTANCE};
+  if (S.token) headers.Authorization = 'Bearer ' + S.token;
+  const r = await fetch(url, {method, headers, body: body ? JSON.stringify(body) : undefined});
+  let j = null; try { j = await r.json(); } catch (e) {}
+  if (!r.ok) throw new Error((j && (j.message || j.error)) || ('Request failed (' + r.status + ')'));
+  return j;
+}
+async function readAll(table, filter = '') {
+  let out = [], page = 1;
+  for (;;) {
+    const j = await api(DATA, `/read/${table}?limit=500&page=${page}${filter}`);
+    out = out.concat(j.data || []);
+    if (!j.metadata || !j.metadata.hasMore) return out;
+    page++;
+  }
+}
+const create = (t, row) => api(DATA, `/create/${t}`, 'POST', row);
+const update = (t, id, row) => api(DATA, `/update/${t}/${id}`, 'PUT', row);
+const remove = (t, id) => api(DATA, `/delete/${t}/${id}`, 'DELETE');
+// Run a list of jobs a few at a time (used when marking many entries billed or reimbursed).
+async function inChunks(items, fn, size = 5) {
+  for (let i = 0; i < items.length; i += size) await Promise.all(items.slice(i, i + size).map(fn));
+}
+// Every change is written to the history table so there is a record of who did what.
+function log(table, id, action, detail = '') {
+  return create('history', {table_name: table, record_id: id, action, detail: String(detail).slice(0, 590), actor_name: S.user.name}).catch(() => {});
+}
+
+// ---------- dialogs ----------
+function dialog(msg, yes, no) {
+  return new Promise((res) => {
+    const m = document.createElement('div'); m.className = 'modal';
+    m.innerHTML = `<div class="box" style="max-width:440px"><p style="margin:4px 0 16px">${h(msg)}</p>
+      <div class="row" style="justify-content:flex-end">${no ? `<button id="dn">${h(no)}</button>` : ''}<button class="pri" id="dy">${h(yes)}</button></div></div>`;
+    document.body.appendChild(m);
+    const done = (v) => { m.remove(); res(v); };
+    $('#dy', m).onclick = () => done(true); if (no) $('#dn', m).onclick = () => done(false);
+    $('#dy', m).focus();
+  });
+}
+const ask = (msg, yes = 'Yes') => dialog(msg, yes, 'Cancel');
+const tell = (msg) => dialog(msg, 'OK');
+// A small form in a box. fields: [{k, label, type: text|number|check|select, options, required}]
+function formDialog(title, fields, init = {}, yes = 'Save') {
+  return new Promise((res) => {
+    const m = document.createElement('div'); m.className = 'modal';
+    m.innerHTML = `<div class="box" style="width:min(460px,96vw)"><b>${h(title)}</b><form id="fd" style="margin-top:12px">` +
+      fields.map(f => f.type === 'check'
+        ? `<div style="margin-bottom:10px"><label style="font-size:14px;color:var(--ink)"><input type="checkbox" name="${f.k}" ${init[f.k] ? 'checked' : ''}>${h(f.label)}</label></div>`
+        : `<div style="margin-bottom:10px"><label>${h(f.label)}</label>${f.type === 'select'
+            ? `<select name="${f.k}" ${f.required ? 'required' : ''}>${opt(f.options, init[f.k])}</select>`
+            : f.type === 'area' ? `<textarea name="${f.k}" rows="3" ${f.required ? 'required' : ''}>${h(init[f.k])}</textarea>`
+            : `<input name="${f.k}" type="${f.type === 'number' ? 'number' : 'text'}" ${f.type === 'number' ? 'step="0.001" min="0"' : ''} value="${h(init[f.k])}" ${f.required ? 'required' : ''}>`}</div>`).join('') +
+      `<div class="row" style="justify-content:flex-end;margin-top:14px"><button type="button" id="fx">Cancel</button><button class="pri">${h(yes)}</button></div></form></div>`;
+    document.body.appendChild(m);
+    const f = $('#fd', m); const first = f.querySelector('input:not([type=checkbox]),select,textarea'); if (first) first.focus();
+    $('#fx', m).onclick = () => { m.remove(); res(null); };
+    f.onsubmit = (e) => { e.preventDefault(); const v = {};
+      fields.forEach(x => { const el = f.elements[x.k]; v[x.k] = x.type === 'check' ? (el.checked ? 1 : 0) : x.type === 'number' ? numOrNull(el.value) : el.value.trim(); });
+      m.remove(); res(v); };
+  });
+}
+
+// ---------- sign in ----------
+function authScreen(mode = 'in', err = '') {
+  $('#nav').classList.add('hide'); $('#out').classList.add('hide'); $('#who').textContent = '';
+  $('#main').innerHTML = `<div class="auth"><div class="card">
+    <h2>${mode === 'in' ? 'Sign in' : 'Create your account'}</h2>
+    ${err ? `<div class="msg err">${h(err)}</div>` : ''}
+    <form id="af">
+      ${mode === 'up' ? `<div class="f"><label>Your full name</label><input name="name" required autocomplete="name"></div>` : ''}
+      <div class="f"><label>Email</label><input name="email" type="email" required autocomplete="email"></div>
+      <div class="f"><label>Password${mode === 'up' ? ' (8 characters or more)' : ''}</label><input name="password" type="password" required minlength="8" autocomplete="${mode === 'in' ? 'current-password' : 'new-password'}"></div>
+      <button class="pri" style="width:100%">${mode === 'in' ? 'Sign in' : 'Create account'}</button>
+    </form>
+    <p class="muted" style="margin:14px 0 0">Need an account or forgot your password? Ask your Expense Desk administrator.</p>
+  </div></div>`;
+  $('#af').onsubmit = async (e) => {
+    e.preventDefault();
+    const f = Object.fromEntries(new FormData(e.target));
+    S.token = null;
+    try {
+      const j = await api(AUTH, mode === 'in' ? '/sign-in/email' : '/sign-up/email', 'POST', f);
+      S.token = j.token; localStorage.setItem('xd_token', j.token);
+      localStorage.setItem('xd_user', JSON.stringify(j.user));
+      S.tab = null; start();
+    } catch (x) { authScreen(mode, x.message); }
+  };
+}
+async function signOut() {
+  try { await api(AUTH, '/sign-out', 'POST', {}); } catch (e) {}
+  localStorage.removeItem('xd_token'); localStorage.removeItem('xd_user'); S.token = null; S.user = null; authScreen();
+}
+
+// ---------- start ----------
+async function loadLookups() {
+  const [clients, projects, categories, eventTypes, settings, batches] = await Promise.all(
+    ['clients', 'projects', 'categories', 'event_types', 'settings', 'batches'].map(t => readAll(t)));
+  const byName = (a, b) => String(a.name).localeCompare(String(b.name));
+  S.L = {allClients: clients.sort(byName), clients: clients.filter(c => c.active), allProjects: projects.sort(byName), projects: projects.filter(p => p.active),
+         categories: categories.sort((a, b) => a.id - b.id), allEventTypes: eventTypes, eventTypes: eventTypes.filter(e => e.active),
+         setRows: settings, set: Object.fromEntries(settings.map(s => [s.setting_key, s.setting_value])), batches};
+  S.rate = parseFloat(S.L.set.mileage_rate || '0.70');
+  $('#co').textContent = S.L.set.company_name || '';
+}
+async function start() {
+  if (!S.token) return authScreen();
+  $('#main').innerHTML = '<p class="muted">Loading…</p>';
+  try {   // the sign-in reply carries the user's name and role; a data read proves the session is still good
+    S.user = JSON.parse(localStorage.getItem('xd_user'));
+    if (!S.user || !S.user.id) throw new Error('No user');
+    await loadLookups();
+  } catch (e) { localStorage.removeItem('xd_token'); S.token = null; return authScreen('in', 'Please sign in again.'); }
+  $('#who').textContent = S.user.name + (isAdmin() ? ' · Reviewer' : '');
+  $('#out').classList.remove('hide'); $('#out').onclick = signOut;
+  S.month = S.month || today().slice(0, 7);
+  S.tab = S.tab || (isAdmin() ? 'review' : 'mine');
+  drawNav(); draw();
+}
+const isAdmin = () => S.user && S.user.role === 'admin';
+const isClosed = (m) => S.L.batches.some(b => b.batch_month === m && (b.status === 'closed' || b.status === 'exported'));
+// New entries dated in a closed month are filed under the next month that is still open.
+function monthFor(date) {
+  let m = date.slice(0, 7);
+  for (let i = 0; i < 24 && isClosed(m); i++) { const d = new Date(+m.slice(0, 4), +m.slice(5, 7), 1); m = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
+  return m;
+}
+function drawNav() {
+  const tabs = [['mine', 'My expenses']].concat(isAdmin() ? [['review', 'Review']] : [], [['reports', 'Reports']], isAdmin() ? [['settings', 'Settings']] : []);
+  const n = $('#nav'); n.classList.remove('hide');
+  n.innerHTML = tabs.map(([k, t]) => `<button data-t="${k}" class="${S.tab === k ? 'on' : ''}">${t}</button>`).join('');
+  n.querySelectorAll('button').forEach(b => b.onclick = () => { S.tab = b.dataset.t; drawNav(); draw(); });
+}
+const draw = () => ({review: drawReview, reports: drawReports, settings: drawSettings}[S.tab] || drawMine)();
+const byId = (list, id) => list.find(x => String(x.id) === String(id));
+const opt = (list, sel, label = 'name', blank = 'Choose…') => (blank === null ? '' : `<option value="">${blank}</option>`) +
+  list.map(x => `<option value="${h(x.id)}" ${String(sel) === String(x.id) ? 'selected' : ''}>${h(x[label])}</option>`).join('');
+const monthPicker = (id) => `<div><label>Month</label><input type="month" id="${id}" value="${S.month}"></div>`;
+
+// ---------- entries: one shape for expenses and event fees ----------
+const C = (id) => byId(S.L.allClients, id) || {}, P = (id) => byId(S.L.allProjects, id) || {};
+function decE(x) { const c = byId(S.L.categories, x.category_id) || {};
+  return {...x, t: 'expenses', date: String(x.expense_date).slice(0, 10), cat: c.name || '', fb: c.freshbooks_name || '', amt: Number(x.amount) || 0,
+    client: C(x.client_id).name || '', short: C(x.client_id).short_name || '', proj: P(x.project_id).name || ''}; }
+function decV(x) { const e = byId(S.L.allEventTypes, x.event_type_id) || {};
+  return {...x, t: 'events_worked', fee: true, billable: 1, date: String(x.event_date).slice(0, 10), cat: e.name || '', fb: e.name || '', amt: Number(x.fee) || 0,
+    client: C(x.client_id).name || '', short: C(x.client_id).short_name || '', proj: P(x.project_id).name || '', vendor: '', description: ''}; }
+const STATUS = {submitted: 'Waiting', approved: 'Approved', returned: 'Sent back'};
+const statusPills = (r, full) => `<span class="pill ${h(r.status)}">${STATUS[r.status] || h(r.status)}</span>` +
+  (full && r.billed_on ? ' <span class="pill info">Billed</span>' : '') + (r.reimbursed_on ? ' <span class="pill approved">Reimbursed</span>' : '');
+const noteCell = (r) => `${r.vendor ? `<b>${h(r.vendor)}</b>` : ''}${r.receipt_number ? ` <span class="muted">#${h(r.receipt_number)}</span>` : ''}${r.description ? `${r.vendor || r.receipt_number ? '<br>' : ''}${h(r.description)}` : ''}`;
+const sentBack = (r) => (r.status === 'returned' && r.review_note ? `<div style="color:var(--bad);font-size:13px">Sent back: ${h(r.review_note)}</div>` : '');
+
+// ---------- receipts ----------
+async function receiptCall(body) {
+  if (!RECEIPTS_URL) throw new Error('Receipt storage is not switched on yet.');
+  const r = await fetch(RECEIPTS_URL, {method: 'POST', body: JSON.stringify({...body, token: S.token})});
+  const j = await r.json(); if (!j.ok) throw new Error(j.error || 'Receipt service error'); return j;
+}
+function fileToBase64(file) {
+  return new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.onerror = rej; fr.readAsDataURL(file); });
+}
+async function prepReceipt(file) {
+  if (!file.type.startsWith('image/')) return {data: await fileToBase64(file), mimeType: file.type || 'application/pdf'};
+  const img = await createImageBitmap(file), k = Math.min(1, 1800 / Math.max(img.width, img.height));
+  const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return {data: c.toDataURL('image/jpeg', 0.85).split(',')[1], mimeType: 'image/jpeg'};
+}
+async function fileHash(file) {   // a fingerprint of the file itself: the same photo or PDF always gives the same one
+  try { const d = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+    return [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, '0')).join(''); } catch (e) { return null; }
+}
+// Who the receipt is from, by simple rule: a company name (… Inc, LLC), the sender's email, or the first real line.
+function vendorFrom(text, fallback) {
+  if (!text) return fallback || '';
+  const generic = /^(tax\s+)?(invoice|receipt|order|statement|bill|payment|transaction|details|summary|thank|page|date|total|subtotal|amount|description|qty|pay online|bill to|ship to|sold to|to|from)\b/i;
+  const co = /\b((?:[A-Z][\w&'.-]*\s+){0,4}[A-Z][\w&'.-]*),?\s+(Inc|LLC|L\.L\.C|Ltd|Limited|Corp|Corporation|Co|Company|LP|LLP|GmbH|PLC)\b\.?/i.exec(text.replace(/\r/g, ''));
+  if (co) {
+    const name = co[1].split(/\s+/).filter(w => !/^(bill|to|from|sold|by|invoice|receipt|merchant|vendor)$/i.test(w)).join(' ');
+    if (name) return (name + ' ' + co[2]).trim();
+  }
+  const mine = ((S.user && S.user.email) || '').toLowerCase(), common = /^(gmail|yahoo|outlook|hotmail|icloud|aol|me|live|msn)\./i;
+  for (const m of text.matchAll(/[\w.+-]+@([\w-]+(?:\.[\w-]+)+)/g)) {
+    if (m[0].toLowerCase() === mine || common.test(m[1])) continue;
+    const label = m[1].split('.').slice(-2, -1)[0];
+    if (label) return label.charAt(0).toUpperCase() + label.slice(1);
+  }
+  const line = text.split(/\r?\n/).map(l => l.trim()).find(l => /[A-Za-z]{3,}/.test(l) && !generic.test(l) && !/^\d/.test(l));
+  return (line || fallback || '').slice(0, 60);
+}
+function refFrom(text) {          // invoice / order / ticket number, by simple rule (the AI reader does this better)
+  if (!text) return '';
+  const m = /\b(?:invoice|order|receipt|ticket|confirmation|folio|job|check|transaction|trans|ref(?:erence)?)\s*(?:number|no\.?|num|id|#)?\s*[:#]?\s*([A-Z0-9][A-Z0-9-]{3,23})\b/i.exec(text.replace(/\s+/g, ' '));
+  return m && /\d/.test(m[1]) ? m[1] : '';
+}
+async function aiRead(prep, text) {
+  try {
+    const r = await fetch('/ai-read', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({token: S.token, text, categories: S.L.categories.map(c => c.name), ...prep})});
+    if (r.status === 404 || r.status === 501) return null;   // no AI reader here: keep the basic reading
+    return await r.json();
+  } catch (e) { return null; }
+}
+async function showReceipt(fileId) {
+  const m = document.createElement('div'); m.className = 'modal'; m.style.zIndex = 12;
+  m.innerHTML = '<div class="box"><p class="muted">Loading receipt…</p></div>'; m.onclick = (e) => { if (e.target === m) m.remove(); };
+  document.body.appendChild(m);
+  try {
+    const j = await receiptCall({action: 'view', fileId}), src = `data:${j.mimeType};base64,${j.data}`;
+    $('.box', m).innerHTML = `<div class="row" style="justify-content:space-between;margin-bottom:8px"><b>${h(j.name)}</b><button class="sm" id="mx">Close</button></div>` +
+      (j.mimeType.startsWith('image/') ? `<img src="${src}" alt="Receipt">` : `<iframe src="${src}"></iframe>`);
+    $('#mx', m).onclick = () => m.remove();
+  } catch (x) { $('.box', m).innerHTML = `<div class="msg err">${h(x.message)}</div><button class="sm" id="mx">Close</button>`; $('#mx', m).onclick = () => m.remove(); }
+}
+
+// ---------- vendors and duplicates ----------
+const normKey = (v) => String(v || '').toLowerCase().replace(/\(.*?\)/g, '').replace(/[^a-z0-9]/g, '');
+// Remember how each vendor has been spelled so the same business is always written the same way.
+function setVendors(rows) {
+  S.vendorMap = {}; const count = {};
+  rows.forEach(r => { if (!r.vendor) return; const k = normKey(r.vendor); if (!k) return;
+    count[k] = count[k] || {}; count[k][r.vendor] = (count[k][r.vendor] || 0) + 1; });
+  Object.keys(count).forEach(k => { S.vendorMap[k] = Object.entries(count[k]).sort((a, b) => b[1] - a[1])[0][0]; });
+  $('#vlist').innerHTML = Object.values(S.vendorMap).sort().map(v => `<option value="${h(v)}">`).join('');
+}
+const canonVendor = (v) => S.vendorMap[normKey(v)] || v || '';
+// Why two entries look like the same receipt, or '' when they don't.
+function dupReason(a, b) {
+  if (a.receipt_hash && a.receipt_hash === b.receipt_hash) return 'the same receipt file';
+  const va = normKey(a.vendor), vb = normKey(b.vendor), sameAmt = Math.abs(Number(a.amount) - Number(b.amount)) < 0.005;
+  if (a.receipt_number && normKey(a.receipt_number) === normKey(b.receipt_number) && (sameAmt || (va && va === vb))) return 'the same receipt number';
+  if (va && va === vb && sameAmt && String(a.expense_date).slice(0, 10) === String(b.expense_date).slice(0, 10)) return 'the same vendor, date and amount';
+  return '';
+}
+function findDup(c, pool) {
+  for (const o of pool) { if (c.id != null && o.id === c.id) continue; const why = dupReason(c, o); if (why) return {of: o, why}; }
+  return null;
+}
+const dupText = (d) => `${d.of.employee_name ? d.of.employee_name + ', ' : ''}${String(d.of.expense_date).slice(0, 10)}, ${money(d.of.amount)} (${d.why})`;
+
+// ---------- several receipts at once ----------
+async function batchReceipts(files, host) {
+  const B = files.map(file => ({file, status: 'reading', date: today(), category_id: '', billable: 1, client_id: '', project_id: '', amount: '', vendor: '', ref: '', hash: null, extra: {}, touched: {}}));
+  const pool = S.mine || [];
+  const asEntry = (x) => ({receipt_hash: x.hash, vendor: x.vendor, receipt_number: x.ref, amount: x.amount, expense_date: x.date});
+  const checkDup = (i) => { const c = asEntry(B[i]);
+    B[i].dup = findDup(c, pool) || findDup(c, B.filter((x, j) => j !== i && x.status === 'ready').map(x => ({...asEntry(x), employee_name: 'another receipt in this batch'}))); };
+  host.innerHTML = `<div class="card" id="batch">
+    <div class="row" style="justify-content:space-between;margin-bottom:6px">
+      <h2 style="margin:0">Receipts added together (${B.length})</h2>
+      <div class="row"><div><label>Client for all</label><select id="ball">${opt(S.L.clients, '')}</select></div>
+        <button class="pri" id="bsave" disabled>Save all</button><button id="bcancel">Cancel</button></div>
+    </div>
+    <p class="muted" id="bstat" style="margin:0 0 8px">Reading…</p>
+    <div class="scroll"><table><thead><tr><th>Receipt</th><th>Date</th><th>Paid to</th><th>Type</th><th>Who pays</th><th>Client</th><th>Project</th><th class="n">Amount</th><th>Receipt no.</th><th></th></tr></thead><tbody id="brows"></tbody></table></div></div>`;
+  const body = $('#brows', host), stat = $('#bstat', host), saveBtn = $('#bsave', host);
+  const inp = 'style="min-width:110px;padding:6px 8px"';
+  const rowHtml = (r, i) => {
+    const name = `<td><b>${h(r.file.name.replace(/\.[a-z0-9]+$/i, '').slice(0, 34))}</b>${r.fileId ? ` <button class="sm" data-view="${i}">View</button>` : ''}${r.bad ? `<div style="color:var(--bad);font-size:12px">${h(r.bad)}</div>` : ''}${r.dup && r.status === 'ready' ? `<div style="color:var(--warn);font-size:12px">Possible duplicate of ${h(dupText(r.dup))}</div>` : ''}</td>`;
+    if (r.status === 'reading') return `<tr data-i="${i}">${name}<td colspan="9" class="muted">Saving and reading…</td></tr>`;
+    if (r.status === 'error') return `<tr data-i="${i}" class="off">${name}<td colspan="8" style="color:var(--bad)">${h(r.err)}</td><td><button class="sm" data-rm="${i}">Remove</button></td></tr>`;
+    if (r.status === 'removed') return `<tr data-i="${i}" class="hide"></tr>`;
+    return `<tr data-i="${i}">${name}
+      <td><input type="date" data-k="date" value="${h(r.date)}" max="${today()}" style="padding:6px 8px"></td>
+      <td><input data-k="vendor" list="vlist" value="${h(r.vendor)}" style="min-width:150px;padding:6px 8px"></td>
+      <td><select data-k="category_id" ${inp}>${opt(S.L.categories, r.category_id)}</select></td>
+      <td><select data-k="billable" style="padding:6px 8px"><option value="1" ${r.billable ? 'selected' : ''}>Client</option><option value="0" ${r.billable ? '' : 'selected'}>Company</option></select></td>
+      <td>${r.billable ? `<select data-k="client_id" ${inp}>${opt(S.L.clients, r.client_id)}</select>` : '<span class="pill nb">company</span>'}</td>
+      <td>${r.billable ? `<select data-k="project_id" ${inp}>${opt(S.L.projects.filter(p => String(p.client_id) === String(r.client_id)), r.project_id, 'name', r.client_id ? '(none)' : 'Pick client')}</select>` : ''}</td>
+      <td class="n"><input type="number" data-k="amount" value="${h(r.amount)}" min="0" step="0.01" style="width:96px;padding:6px 8px;text-align:right"></td>
+      <td><input data-k="ref" value="${h(r.ref)}" style="width:120px;padding:6px 8px"></td>
+      <td><button class="sm" data-rm="${i}">Remove</button></td></tr>`;
+  };
+  body.innerHTML = B.map(rowHtml).join('');
+  const live = () => B.filter(r => r.status === 'ready');
+  const status = () => {
+    const reading = B.filter(r => r.status === 'reading').length, n = live().length;
+    stat.textContent = reading ? `Reading ${reading} of ${B.length}…` : `${n} ready. Check each line, pick the client, then Save all.`;
+    saveBtn.disabled = reading > 0 || n === 0; saveBtn.textContent = n ? `Save all ${n}` : 'Save all';
+  };
+  const paint = (i) => { const tr = body.querySelector(`tr[data-i="${i}"]`); if (tr) tr.outerHTML = rowHtml(B[i], i); status(); };
+  body.addEventListener('change', (e) => {
+    const k = e.target.dataset.k, tr = e.target.closest('tr'); if (!k || !tr) return;
+    const i = +tr.dataset.i, r = B[i]; r.touched[k] = true; r.bad = '';
+    r[k] = k === 'billable' ? +e.target.value : e.target.value;
+    if (k === 'category_id') { const c = byId(S.L.categories, r.category_id); if (c && !r.touched.billable) r.billable = c.billable_default ? 1 : 0; paint(i); }
+    if (k === 'client_id') { r.project_id = ''; paint(i); }
+    if (k === 'billable') paint(i);
+    if (['date', 'amount', 'vendor', 'ref'].includes(k)) { const was = r.dup; checkDup(i); if (!!was !== !!r.dup || r.dup) paint(i); }
+  });
+  body.addEventListener('click', (e) => {
+    if (e.target.dataset.rm) { B[+e.target.dataset.rm].status = 'removed'; paint(+e.target.dataset.rm); }
+    if (e.target.dataset.view) showReceipt(B[+e.target.dataset.view].fileId);
+  });
+  $('#ball', host).onchange = (e) => { B.forEach((r, i) => { if (r.status === 'ready' && r.billable) { r.client_id = e.target.value; r.project_id = ''; paint(i); } }); };
+  $('#bcancel', host).onclick = async () => { if (await ask('Discard these receipts? Nothing has been saved as an entry yet.', 'Discard')) host.innerHTML = ''; };
+
+  const readOne = async (r, i) => {
+    try {
+      const prep = await prepReceipt(r.file); r.hash = await fileHash(r.file);
+      const j = await receiptCall({action: 'upload', name: r.file.name, employee: S.user.name, month: today().slice(0, 7), categories: S.L.categories.map(c => c.name), ...prep});
+      r.fileId = j.fileId; r.recAmount = j.amount;
+      if (j.date && j.date <= today()) r.date = j.date;
+      if (j.amount != null) r.amount = Number(j.amount).toFixed(2);
+      r.vendor = canonVendor(vendorFrom(j.text, j.merchant)); r.ref = refFrom(j.text);
+      r.status = 'ready'; checkDup(i); paint(i);
+      const a = (j.ai && j.ai.ok ? j.ai : null) || await aiRead(prep, j.text);
+      if (a && a.ok && r.status === 'ready') {
+        if (a.vendor && !r.touched.vendor) r.vendor = canonVendor(a.vendor);
+        if (a.receipt_number && !r.touched.ref) r.ref = String(a.receipt_number);
+        r.extra = {receipt_time: a.time || null, payment_method: a.payment || null, tax: numOrNull(a.tax), tip: numOrNull(a.tip)};
+        if (a.date && /^\d{4}-\d{2}-\d{2}$/.test(a.date) && a.date <= today() && !r.touched.date) r.date = a.date;
+        if (a.amount != null && !isNaN(a.amount) && !r.touched.amount) { r.amount = Number(a.amount).toFixed(2); r.recAmount = Number(a.amount); }
+        const c = S.L.categories.find(x => x.name.toLowerCase() === String(a.category || '').toLowerCase());
+        if (c && !r.touched.category_id) { r.category_id = c.id; if (!r.touched.billable) r.billable = c.billable_default ? 1 : 0; }
+        checkDup(i);
+        if (!document.activeElement || !document.activeElement.closest(`tr[data-i="${i}"]`)) paint(i);
+      }
+    } catch (x) { r.status = 'error'; r.err = x.message; paint(i); }
+  };
+  let next = 0; status();
+  await Promise.all([0, 1, 2].map(async () => { while (next < B.length) { const i = next++; await readOne(B[i], i); } }));
+  status();
+
+  saveBtn.onclick = async () => {
+    let bad = 0;
+    B.forEach((r, i) => { if (r.status !== 'ready') return;
+      r.bad = !r.category_id ? 'Pick a type' : !(parseFloat(r.amount) > 0) ? 'Enter the amount' : r.billable && !r.client_id ? 'Pick a client' : !r.date ? 'Enter the date' : '';
+      if (r.bad) { bad++; paint(i); } });
+    if (bad) { stat.innerHTML = `<span style="color:var(--bad)">${bad} line${bad === 1 ? ' needs' : 's need'} fixing before saving.</span>`; return; }
+    live().forEach((r) => checkDup(B.indexOf(r)));
+    const dups = live().filter(r => r.dup).length;
+    if (dups && !(await ask(`${dups} of these look${dups === 1 ? 's' : ''} like a duplicate of something already entered. Save ${dups === 1 ? 'it' : 'them'} anyway?`, 'Save anyway'))) { B.forEach((r, i) => r.status === 'ready' && paint(i)); return; }
+    saveBtn.disabled = true; let done = 0, last = S.month;
+    for (const r of live()) {
+      stat.textContent = `Saving ${++done} of ${live().length}…`;
+      const month = monthFor(r.date);
+      const j = await create('expenses', {employee_name: S.user.name, expense_date: r.date, amount: parseFloat(r.amount), category_id: +r.category_id,
+        client_id: r.billable ? +r.client_id : null, project_id: r.billable && r.project_id ? +r.project_id : null, description: '',
+        vendor: r.vendor || null, receipt_number: r.ref || null, receipt_hash: r.hash || null, ...r.extra,
+        billable: r.billable ? 1 : 0, status: 'submitted', batch_month: month, receipt_url: r.fileId || null,
+        receipt_amount: r.recAmount != null ? r.recAmount : null});
+      log('expenses', j.id, 'entered', `${r.vendor || 'Expense'}, ${money(r.amount)}`);
+      last = month;
+    }
+    S.month = last;
+    drawMine(`<div class="msg ok">Saved ${done} entr${done === 1 ? 'y' : 'ies'}. They are now waiting for review.</div>`);
+  };
+}
+
+// ---------- staff: my expenses ----------
+async function drawMine(note = '') {
+  const m = $('#main');
+  m.innerHTML = '<p class="muted">Loading…</p>';
+  S.mine = (await readAll('expenses', `&user_id=${encodeURIComponent(S.user.id)}`)).map(decE);
+  setVendors(S.mine);
+  const back = S.mine.filter(r => r.status === 'returned').length;
+  m.innerHTML = `
+  ${back ? `<div class="msg err">${back === 1 ? 'One of your entries was' : back + ' of your entries were'} sent back and need${back === 1 ? 's' : ''} fixing. <button class="link" id="goBack">Show ${back === 1 ? 'it' : 'them'}</button></div>` : ''}
+  <div id="bhost"></div>
+  <div class="card">
+    <div class="row" style="justify-content:space-between;margin-bottom:12px">
+      <h2 style="margin:0">Add an entry</h2>
+      <div class="seg" id="kind"><button data-k="exp" class="on">Expense</button><button data-k="evt">Event I worked</button></div>
+    </div>
+    ${note}
+    <form id="ef">
+      <div class="recbar" id="fRec"><label style="font-size:13px;color:var(--ink);font-weight:600">Receipt: take a photo or choose a file and the form fills itself in. Pick several at once to add them together.</label>
+        <div class="row"><input type="file" id="rfile" accept="image/*,application/pdf" multiple style="max-width:340px"><span id="rstat" class="muted"></span></div></div>
+      <div class="grid">
+        <div><label>Date</label><input type="date" name="date" value="${today()}" max="${today()}" required></div>
+        <div id="fCat"><label>Type of expense</label><select name="category_id" required>${opt(S.L.categories, '')}</select></div>
+        <div id="fEvt" class="hide"><label>Event</label><select name="event_type_id">${opt(S.L.eventTypes.map(e => ({...e, name: `${e.name} (${money(e.fee)})`})), '')}</select></div>
+        <div id="fBill"><label>Who pays?</label><select name="billable"><option value="1">Bill to a client</option><option value="0">Company expense (not billed)</option></select></div>
+        <div id="fClient"><label>Client</label><select name="client_id">${opt(S.L.clients, '')}</select></div>
+        <div id="fProj"><label>Project / title</label><select name="project_id"><option value="">Choose a client first</option></select></div>
+        <div id="fMiles" class="hide"><label>Miles driven</label><input type="number" name="miles" min="0" step="0.1" inputmode="decimal"></div>
+        <div id="fAmt"><label>Amount ($)</label><input type="number" name="amount" min="0" step="0.01" inputmode="decimal"></div>
+        <div id="fVen"><label>Paid to (vendor)</label><input name="vendor" list="vlist" maxlength="150"></div>
+        <div id="fRef"><label>Receipt / invoice no.</label><input name="receipt_number" maxlength="80"></div>
+        <div style="grid-column:1/-1" id="fDesc"><label>What was it for? (optional)</label><input name="description" maxlength="300"></div>
+      </div>
+      <p class="muted" id="hint" style="margin:10px 0 0"></p>
+      <div class="row" style="margin-top:12px"><button class="pri" id="save">Save entry</button></div>
+    </form>
+  </div>
+  <div class="card">
+    <div class="row" style="justify-content:space-between;margin-bottom:8px"><h2 style="margin:0">My entries</h2>${monthPicker('mm')}</div>
+    <div id="mylist" class="scroll"><p class="muted">Loading…</p></div>
+  </div>`;
+  if (back) $('#goBack').onclick = () => { S.month = S.mine.find(r => r.status === 'returned').batch_month; $('#mm').value = S.month; loadMine(); $('#mylist').scrollIntoView({behavior: 'smooth'}); };
+  const f = $('#ef'); let kind = 'exp', rec = null;
+  $('#rfile').onchange = async (e) => {
+    if (e.target.files.length > 1) { const many = [...e.target.files]; e.target.value = ''; $('#rstat').textContent = ''; return batchReceipts(many, $('#bhost')); }
+    const file = e.target.files[0], st = $('#rstat'); rec = null; if (!file) { st.textContent = ''; return; }
+    st.textContent = 'Saving and reading the receipt…'; $('#save').disabled = true;
+    try {
+      const prep = await prepReceipt(file);
+      const j = await receiptCall({action: 'upload', name: file.name, employee: S.user.name, month: (f.date.value || today()).slice(0, 7), categories: S.L.categories.map(c => c.name), ...prep});
+      rec = {fileId: j.fileId, amount: j.amount, hash: await fileHash(file), extra: {}};
+      if (j.date && j.date <= today()) f.date.value = j.date;
+      const cat = byId(S.L.categories, f.category_id.value);
+      if (j.amount != null && !(cat && cat.is_mileage)) f.amount.value = Number(j.amount).toFixed(2);
+      const who = canonVendor(vendorFrom(j.text, j.merchant)); if (who && !f.vendor.value) f.vendor.value = who;
+      const ref0 = refFrom(j.text); if (ref0 && !f.receipt_number.value) f.receipt_number.value = ref0;
+      st.innerHTML = j.amount != null ? `Read <b>${money(j.amount)}</b>${j.date ? ' dated ' + h(j.date) : ''}. Check it, then pick the type and client.` : 'Saved. I could not read the amount, so please type it in.';
+      const autoVen = f.vendor.value, autoRef = f.receipt_number.value, basic = st.innerHTML;
+      st.innerHTML = basic + ' <span class="muted">Checking with AI…</span>';
+      $('#save').disabled = false;
+      const a = (j.ai && j.ai.ok ? j.ai : null) || await aiRead(prep, j.text);   // the AI reader corrects vendor, type, date, amount and reads the receipt number
+      if (a && a.ok) {
+        if (a.vendor && (!f.vendor.value || f.vendor.value === autoVen)) f.vendor.value = canonVendor(a.vendor);
+        if (a.receipt_number && (!f.receipt_number.value || f.receipt_number.value === autoRef)) f.receipt_number.value = String(a.receipt_number);
+        rec.extra = {receipt_time: a.time || null, payment_method: a.payment || null, tax: numOrNull(a.tax), tip: numOrNull(a.tip)};
+        if (a.date && /^\d{4}-\d{2}-\d{2}$/.test(a.date) && a.date <= today()) f.date.value = a.date;
+        const c = S.L.categories.find(x => x.name.toLowerCase() === String(a.category || '').toLowerCase());
+        if (c && !f.category_id.value) { f.category_id.value = c.id; f.category_id.onchange(); }
+        const now = byId(S.L.categories, f.category_id.value);
+        if (a.amount != null && !isNaN(a.amount) && !(now && now.is_mileage)) { f.amount.value = Number(a.amount).toFixed(2); rec.amount = Number(a.amount); }
+        st.innerHTML = `AI read <b>${money(a.amount)}</b>${a.vendor ? ' from <b>' + h(a.vendor) + '</b>' : ''}${a.date ? ', ' + h(a.date) : ''}. Check it, then pick the client.`;
+      } else {
+        st.innerHTML = basic + (a && a.error ? ` <span class="muted">(AI reader: ${h(a.error)})</span>` : '');
+      }
+    } catch (x) { st.innerHTML = `<span style="color:var(--bad)">${h(x.message)}</span>`; e.target.value = ''; }
+    $('#save').disabled = false;
+  };
+  const refresh = () => {
+    const cat = byId(S.L.categories, f.category_id.value), evt = kind === 'evt';
+    const mileage = !evt && cat && cat.is_mileage, bill = evt || f.billable.value === '1';
+    $('#fCat').classList.toggle('hide', evt); $('#fEvt').classList.toggle('hide', !evt);
+    $('#fBill').classList.toggle('hide', evt); $('#fDesc').classList.toggle('hide', evt); $('#fRec').classList.toggle('hide', evt);
+    $('#fVen').classList.toggle('hide', evt || !!mileage); $('#fRef').classList.toggle('hide', evt || !!mileage);
+    $('#fClient').classList.toggle('hide', !bill); $('#fProj').classList.toggle('hide', !bill);
+    $('#fMiles').classList.toggle('hide', !mileage); $('#fAmt').classList.toggle('hide', evt);
+    f.amount.readOnly = !!mileage;
+    if (mileage) f.amount.value = f.miles.value ? (parseFloat(f.miles.value) * S.rate).toFixed(2) : '';
+    $('#hint').textContent = evt ? 'The event fee is added to the client\'s bill automatically. You are not reimbursed for it.'
+      : mileage ? `Mileage is paid at ${money(S.rate)} per mile.` : '';
+    f.category_id.required = !evt; f.event_type_id.required = evt; f.client_id.required = bill; f.amount.required = !evt;
+  };
+  $('#kind').querySelectorAll('button').forEach(b => b.onclick = () => {
+    kind = b.dataset.k; $('#kind').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); refresh(); });
+  f.category_id.onchange = () => { const c = byId(S.L.categories, f.category_id.value); if (c) f.billable.value = c.billable_default ? '1' : '0'; refresh(); };
+  f.billable.onchange = refresh; f.miles.oninput = refresh;
+  f.client_id.onchange = () => { f.project_id.innerHTML = opt(S.L.projects.filter(p => String(p.client_id) === f.client_id.value), '', 'name', 'Choose… (or leave blank)'); };
+  refresh();
+  f.onsubmit = async (e) => {
+    e.preventDefault(); $('#save').disabled = true;
+    const v = Object.fromEntries(new FormData(f)), month = monthFor(v.date);
+    const moved = month !== v.date.slice(0, 7) ? ` ${monthName(v.date.slice(0, 7))} is closed, so it was filed under ${monthName(month)}.` : '';
+    try {
+      if (kind === 'evt') {
+        const et = byId(S.L.eventTypes, v.event_type_id);
+        const j = await create('events_worked', {employee_name: S.user.name, event_date: v.date, event_type_id: +v.event_type_id, client_id: +v.client_id,
+          project_id: v.project_id ? +v.project_id : null, fee: et.fee, status: 'submitted', batch_month: month});
+        log('events_worked', j.id, 'entered', `${et.name}, ${money(et.fee)}`);
+      } else {
+        const bill = v.billable === '1';
+        const row = {employee_name: S.user.name, expense_date: v.date, amount: parseFloat(v.amount), miles: v.miles ? parseFloat(v.miles) : null,
+          category_id: +v.category_id, client_id: bill ? +v.client_id : null, project_id: bill && v.project_id ? +v.project_id : null,
+          description: v.description || '', vendor: v.vendor ? canonVendor(v.vendor.trim()) : null, receipt_number: v.receipt_number || null,
+          billable: bill ? 1 : 0, status: 'submitted', batch_month: month,
+          receipt_url: rec ? rec.fileId : null, receipt_amount: rec && rec.amount != null ? rec.amount : null,
+          receipt_hash: rec ? rec.hash : null, ...(rec ? rec.extra : {})};
+        const d = findDup(row, S.mine);
+        if (d && !(await ask(`This looks like a duplicate. You already entered ${dupText(d)}. Save it anyway?`, 'Save anyway'))) { $('#save').disabled = false; return; }
+        const j = await create('expenses', row);
+        log('expenses', j.id, 'entered', `${row.vendor || (byId(S.L.categories, row.category_id) || {}).name || 'Expense'}, ${money(row.amount)}`);
+      }
+      S.month = month; drawMine(`<div class="msg ok">Saved. It is now waiting for review.${moved}</div>`);
+    } catch (x) { $('#save').disabled = false; $('#hint').innerHTML = `<span class="msg err">${h(x.message)}</span>`; }
+  };
+  $('#mm').onchange = (e) => { S.month = e.target.value; loadMine(); };
+  loadMine();
+}
+async function loadMine() {
+  const box = $('#mylist'); if (!box) return;
+  const ev = (await readAll('events_worked', `&user_id=${encodeURIComponent(S.user.id)}&batch_month=${S.month}`)).map(decV);
+  const rows = S.mine.filter(r => r.batch_month === S.month).concat(ev).sort((a, b) => b.date.localeCompare(a.date));
+  if (!rows.length) { box.innerHTML = `<p class="muted">Nothing entered for ${monthName(S.month)} yet.</p>`; return; }
+  const locked = isClosed(S.month), mineOnly = rows.filter(r => !r.fee && r.status !== 'returned');
+  const owed = sum(mineOnly.filter(r => !r.reimbursed_on)), paid = sum(mineOnly.filter(r => r.reimbursed_on));
+  box.innerHTML = (locked ? `<div class="msg lock">${monthName(S.month)} is closed. These entries can no longer be changed.</div>` : '') +
+    `<table><thead><tr><th>Date</th><th>Type</th><th>Client</th><th>Project</th><th>Paid to / note</th><th class="n">Amount</th><th>Status</th><th></th></tr></thead><tbody>` +
+    rows.map(r => { const open = !locked && r.status !== 'approved';
+      return `<tr><td class="nw">${h(r.date)}</td><td>${h(r.cat)} ${r.fee ? '<span class="pill fee">event fee</span>' : ''}</td>
+      <td>${r.billable ? h(r.client) : '<span class="pill nb">company</span>'}</td><td>${h(r.proj)}</td><td>${noteCell(r)}${sentBack(r)}</td><td class="n">${money(r.amt)}</td>
+      <td>${statusPills(r)}</td>
+      <td class="nw">${r.receipt_url ? `<button class="sm" data-rec="${h(r.receipt_url)}">Receipt</button> ` : ''}${open && !r.fee ? `<button class="sm ${r.status === 'returned' ? 'pri' : ''}" data-ed="${r.id}">${r.status === 'returned' ? 'Fix' : 'Edit'}</button> ` : ''}${open ? `<button class="sm" data-del="${r.t}:${r.id}">Delete</button>` : ''}</td></tr>`; }).join('') +
+    `</tbody><tfoot><tr><td colspan="5"><b>Still to be reimbursed to you</b> <span class="muted">(event fees are not reimbursed${paid ? `; ${money(paid)} already reimbursed` : ''})</span></td><td class="n"><b>${money(owed)}</b></td><td colspan="2"></td></tr></tfoot></table>`;
+  box.querySelectorAll('[data-rec]').forEach(b => b.onclick = () => showReceipt(b.dataset.rec));
+  box.querySelectorAll('[data-ed]').forEach(b => b.onclick = () => entryDialog(S.mine.find(x => String(x.id) === b.dataset.ed), () => drawMine()));
+  box.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+    if (!(await ask('Delete this entry?', 'Delete'))) return; const [t, id] = b.dataset.del.split(':');
+    await remove(t, id); log(t, +id, 'deleted', 'Deleted by the employee'); drawMine(); });
+}
+
+// ---------- one entry: view, edit, history ----------
+function entryDialog(r, onDone) {
+  const admin = isAdmin() && S.tab !== 'mine', locked = isClosed(r.batch_month);
+  const canEdit = !locked && (admin || r.status !== 'approved');
+  const m = document.createElement('div'); m.className = 'modal';
+  const dis = canEdit ? '' : 'disabled';
+  const read = [r.payment_method ? 'paid by ' + h(r.payment_method) : '', r.receipt_time ? 'at ' + h(r.receipt_time) : '', r.tax != null ? 'tax ' + money(r.tax) : '', r.tip != null ? 'tip ' + money(r.tip) : '',
+                r.receipt_amount != null ? 'receipt total ' + money(r.receipt_amount) : ''].filter(Boolean).join(' · ');
+  m.innerHTML = `<div class="box" style="width:min(600px,96vw)">
+    <div class="row" style="justify-content:space-between;margin-bottom:10px"><b>${h(r.employee_name)}'s entry</b><span>${statusPills(r, true)}</span></div>
+    ${locked ? `<div class="msg lock">${monthName(r.batch_month)} is closed, so this entry can't be changed.</div>` : ''}
+    ${sentBack(r) ? `<div class="msg err">${sentBack(r)}</div>` : ''}
+    ${r.dup ? `<div class="msg err">Possible duplicate of ${h(dupText(r.dup))}</div>` : ''}
+    <form id="ee"><div class="grid" style="grid-template-columns:1fr 1fr">
+      <div><label>Date</label><input type="date" name="date" value="${h(r.date)}" max="${today()}" required ${dis}></div>
+      <div><label>Type of expense</label><select name="category_id" required ${dis}>${opt(S.L.categories, r.category_id)}</select></div>
+      <div><label>Who pays?</label><select name="billable" ${dis}><option value="1" ${r.billable ? 'selected' : ''}>Bill to a client</option><option value="0" ${r.billable ? '' : 'selected'}>Company expense (not billed)</option></select></div>
+      <div><label>Amount ($)</label><input type="number" name="amount" value="${r.amt.toFixed(2)}" min="0" step="0.01" required ${dis}></div>
+      <div id="eC"><label>Client</label><select name="client_id" ${dis}>${opt(S.L.allClients.filter(c => c.active || String(c.id) === String(r.client_id)), r.client_id)}</select></div>
+      <div id="eP"><label>Project / title</label><select name="project_id" ${dis}></select></div>
+      <div><label>Paid to (vendor)</label><input name="vendor" list="vlist" value="${h(r.vendor)}" maxlength="150" ${dis}></div>
+      <div><label>Receipt / invoice no.</label><input name="receipt_number" value="${h(r.receipt_number)}" maxlength="80" ${dis}></div>
+      <div style="grid-column:1/-1"><label>Note</label><input name="description" value="${h(r.description)}" maxlength="300" ${dis}></div>
+      ${admin ? `<div style="grid-column:1/-1" class="row">
+        <label style="font-size:14px;color:var(--ink);margin:0"><input type="checkbox" name="billed" ${r.billed_on ? 'checked' : ''} ${dis}>Billed to the client${r.billed_on ? ' on ' + h(String(r.billed_on).slice(0, 10)) : ''}</label>
+        <label style="font-size:14px;color:var(--ink);margin:0"><input type="checkbox" name="reimbursed" ${r.reimbursed_on ? 'checked' : ''} ${dis}>Reimbursed to ${h(r.employee_name)}${r.reimbursed_on ? ' on ' + h(String(r.reimbursed_on).slice(0, 10)) : ''}</label></div>` : ''}
+      ${read ? `<div style="grid-column:1/-1" class="muted">Read from the receipt: ${read}</div>` : ''}
+    </div>
+    <p id="em" style="margin:10px 0 0"></p>
+    <div class="row" style="margin-top:12px">
+      ${r.receipt_url ? '<button type="button" id="ev">View receipt</button>' : '<span class="pill nb">no receipt</span>'}
+      <button type="button" id="eh">History</button>
+      ${canEdit ? '<button type="button" class="danger" id="edl">Delete</button>' : ''}
+      <span class="sp"></span><button type="button" id="ex">${canEdit ? 'Cancel' : 'Close'}</button>
+      ${canEdit ? `<button class="pri" id="es">${!admin && r.status === 'returned' ? 'Save and resubmit' : 'Save changes'}</button>` : ''}
+    </div></form><div id="hbox"></div></div>`;
+  document.body.appendChild(m);
+  const f = $('#ee', m);
+  const projects = (keep) => { f.project_id.innerHTML = opt(S.L.allProjects.filter(p => String(p.client_id) === f.client_id.value && (p.active || String(p.id) === String(keep))), keep, 'name', f.client_id.value ? '(none)' : 'Pick a client first'); };
+  const show = () => { const bill = f.billable.value === '1'; $('#eC', m).classList.toggle('hide', !bill); $('#eP', m).classList.toggle('hide', !bill); };
+  projects(r.project_id); show();
+  f.client_id.onchange = () => projects('');
+  f.billable.onchange = show;
+  f.category_id.onchange = () => { const c = byId(S.L.categories, f.category_id.value); if (c && !c.billable_default) { f.billable.value = '0'; show(); } };
+  $('#ex', m).onclick = () => m.remove();
+  if (r.receipt_url) $('#ev', m).onclick = () => showReceipt(r.receipt_url);
+  $('#eh', m).onclick = async () => {
+    const box = $('#hbox', m); box.innerHTML = '<div class="hist muted">Loading history…</div>';
+    const rows = (await readAll('history', `&table_name=expenses&record_id=${r.id}`)).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+    box.innerHTML = `<div class="hist"><b>History</b>` + (rows.length ? rows.map(x => `<div><span class="muted">${h(new Date(String(x.created_at).replace(' ', 'T') + 'Z').toLocaleString('en-US', {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'}))}</span> · <b>${h(x.actor_name)}</b> ${h(x.action)}${x.detail ? ': ' + h(x.detail) : ''}</div>`).join('')
+      : '<div class="muted">No history recorded. This entry was created before history was switched on.</div>') + '</div>';
+  };
+  if (canEdit) $('#edl', m).onclick = async () => {
+    if (!(await ask(`Delete this entry for good? ${r.employee_name}, ${r.date}, ${money(r.amt)}${r.vendor ? ', ' + r.vendor : ''}.`, 'Delete'))) return;
+    try { await remove('expenses', r.id); log('expenses', r.id, 'deleted', `${r.vendor || r.cat}, ${money(r.amt)}`); m.remove(); onDone(); } catch (x) { tell(x.message); }
+  };
+  f.onsubmit = async (e) => {
+    e.preventDefault(); if (!canEdit) return;
+    const v = Object.fromEntries(new FormData(f)), bill = v.billable === '1';
+    if (bill && !v.client_id) { $('#em', m).innerHTML = '<span style="color:var(--bad)">Pick a client, or change "Who pays?" to Company expense.</span>'; return; }
+    const patch = {expense_date: v.date, category_id: +v.category_id, billable: bill ? 1 : 0, amount: parseFloat(v.amount),
+      client_id: bill ? +v.client_id : null, project_id: bill && v.project_id ? +v.project_id : null, description: v.description || '',
+      vendor: v.vendor ? v.vendor.trim() : null, receipt_number: v.receipt_number || null};
+    // describe what changed, in words, for the history
+    const cn = (id) => (byId(S.L.categories, id) || {}).name || '', ch = [];
+    if (patch.expense_date !== r.date) ch.push(`date ${r.date} to ${patch.expense_date}`);
+    if (String(patch.category_id) !== String(r.category_id)) ch.push(`type ${cn(r.category_id)} to ${cn(patch.category_id)}`);
+    if (Math.abs(patch.amount - r.amt) > 0.005) ch.push(`amount ${money(r.amt)} to ${money(patch.amount)}`);
+    if (!!patch.billable !== !!r.billable) ch.push(patch.billable ? 'now billed to a client' : 'now a company expense');
+    if (String(patch.client_id || '') !== String(r.client_id || '')) ch.push(`client ${r.client || 'none'} to ${C(patch.client_id).name || 'none'}`);
+    if (String(patch.project_id || '') !== String(r.project_id || '')) ch.push(`project ${r.proj || 'none'} to ${P(patch.project_id).name || 'none'}`);
+    if ((patch.vendor || '') !== (r.vendor || '')) ch.push(`vendor ${r.vendor || 'none'} to ${patch.vendor || 'none'}`);
+    if ((patch.receipt_number || '') !== (r.receipt_number || '')) ch.push(`receipt no. to ${patch.receipt_number || 'none'}`);
+    if ((patch.description || '') !== (r.description || '')) ch.push('note changed');
+    if (admin) {
+      if (!!v.billed !== !!r.billed_on) { patch.billed_on = v.billed ? today() : null; ch.push(v.billed ? 'marked billed' : 'marked not billed'); }
+      if (!!v.reimbursed !== !!r.reimbursed_on) { patch.reimbursed_on = v.reimbursed ? today() : null; ch.push(v.reimbursed ? 'marked reimbursed' : 'marked not reimbursed'); }
+    }
+    const resubmit = !admin && r.status === 'returned';
+    if (resubmit) { patch.status = 'submitted'; patch.review_note = null; }
+    if (!ch.length && !resubmit) { m.remove(); return; }
+    $('#es', m).disabled = true;
+    try {
+      await update('expenses', r.id, patch);
+      log('expenses', r.id, resubmit ? 'fixed and resubmitted' : 'edited', ch.join('; '));
+      m.remove(); onDone();
+    } catch (x) { $('#es', m).disabled = false; $('#em', m).innerHTML = `<span style="color:var(--bad)">${h(x.message)}</span>`; }
+  };
+}
+
+// ---------- reviewer ----------
+const mismatch = (r) => !r.fee && r.receipt_amount != null && !r.miles && Math.abs(Number(r.receipt_amount) - r.amt) > 0.005;
+async function drawReview() {
+  $('#main').innerHTML = `
+    <div class="row" style="margin-bottom:14px">${monthPicker('rm')}
+      <div><label>Show</label><select id="flt"><option value="all">Everything</option><option value="wait">Waiting for review</option><option value="back">Sent back</option><option value="bill">Billable only</option><option value="nb">Company expenses only</option><option value="unbilled">Approved, not yet billed</option><option value="unpaid">Approved, not yet reimbursed</option><option value="dup">Possible duplicates</option></select></div>
+      <span class="sp"></span>
+      <button id="appAll">Approve all waiting</button>
+      <button class="pri" id="exp">Download FreshBooks file</button>
+      <button id="reimb">Download reimbursements</button>
+    </div>
+    <div id="rv"><p class="muted">Loading…</p></div>`;
+  $('#rm').onchange = (e) => { S.month = e.target.value; loadReview(); };
+  $('#flt').onchange = () => paintReview();
+  $('#appAll').onclick = async () => {
+    const w = S.R.filter(r => r.status === 'submitted'); if (!w.length) return tell('Nothing is waiting.');
+    const d = w.filter(r => r.dup).length;
+    if (!(await ask(`Approve ${w.length} entr${w.length === 1 ? 'y' : 'ies'}?${d ? ` ${d} of them ${d === 1 ? 'is a possible duplicate' : 'are possible duplicates'}.` : ''}`, 'Approve'))) return;
+    $('#appAll').disabled = true;
+    await inChunks(w, async (r) => { await update(r.t, r.id, {status: 'approved', review_note: null}); log(r.t, r.id, 'approved'); });
+    $('#appAll').disabled = false; loadReview();
+  };
+  $('#exp').onclick = exportFreshbooks; $('#reimb').onclick = exportReimb;
+  loadReview();
+}
+async function loadReview() {
+  const [all, ev] = await Promise.all([readAll('expenses'), readAll('events_worked', `&batch_month=${S.month}`)]);
+  S.All = all.map(decE); setVendors(S.All);
+  S.R = S.All.filter(r => r.batch_month === S.month).concat(ev.map(decV));
+  S.R.forEach(r => { r.dup = r.fee ? null : findDup(r, S.All); });   // checked against every employee and every month
+  paintReview();
+}
+async function setClosed(month, closed) {
+  const b = S.L.batches.find(x => x.batch_month === month);
+  if (b) await update('batches', b.id, {status: closed ? 'closed' : 'open'});
+  else await create('batches', {batch_month: month, status: closed ? 'closed' : 'open'});
+  log('batches', b ? b.id : 0, closed ? 'closed the month' : 'reopened the month', monthName(month));
+  await loadLookups();
+}
+function paintReview() {
+  if (!$('#rv')) return;
+  const R = S.R, f = $('#flt').value, locked = isClosed(S.month);
+  const bill = R.filter(r => r.billable && !r.fee), fees = R.filter(r => r.fee), nb = R.filter(r => !r.billable), wait = R.filter(r => r.status === 'submitted');
+  const ok = R.filter(r => r.status === 'approved'), unbilled = ok.filter(r => r.billable && !r.billed_on), unpaid = ok.filter(r => !r.fee && !r.reimbursed_on);
+  const dups = R.filter(r => r.dup).length;
+  const show = R.filter(r => f === 'all' || (f === 'wait' && r.status === 'submitted') || (f === 'back' && r.status === 'returned') || (f === 'bill' && r.billable) || (f === 'nb' && !r.billable) ||
+    (f === 'unbilled' && unbilled.includes(r)) || (f === 'unpaid' && unpaid.includes(r)) || (f === 'dup' && r.dup));
+  const groups = {}; show.forEach(r => { const k = r.billable ? (r.client || 'No client') : 'Company expenses (not billed)'; (groups[k] = groups[k] || []).push(r); });
+  const keys = Object.keys(groups).sort((a, b) => (a.startsWith('Company') ? 1 : 0) - (b.startsWith('Company') ? 1 : 0) || a.localeCompare(b));
+  $('#appAll').disabled = locked;
+  $('#rv').innerHTML = `
+    ${locked ? `<div class="msg lock row" style="align-items:center"><span class="sp">${monthName(S.month)} is closed. Nothing in it can be changed, and new entries dated in it are filed under the next open month.</span><button class="sm" id="reopen">Reopen</button></div>`
+             : `<div class="row" style="justify-content:flex-end;margin-bottom:8px"><button class="sm" id="close">Close ${monthName(S.month)}</button></div>`}
+    <div class="tiles">
+      <div class="tile"><div class="k">To bill clients, ${monthName(S.month)}</div><div class="v">${money(sum(bill) + sum(fees))}</div></div>
+      <div class="tile"><div class="k">Approved, not yet billed</div><div class="v" style="color:${unbilled.length ? 'var(--warn)' : 'var(--ok)'}">${money(sum(unbilled))}</div></div>
+      <div class="tile"><div class="k">Owed to staff</div><div class="v" style="color:${unpaid.length ? 'var(--warn)' : 'var(--ok)'}">${money(sum(unpaid))}</div></div>
+      <div class="tile"><div class="k">Company expenses (${nb.length})</div><div class="v">${money(sum(nb))}</div></div>
+      <div class="tile"><div class="k">Waiting for review</div><div class="v" style="color:${wait.length ? 'var(--warn)' : 'var(--ok)'}">${wait.length}</div></div>
+      <div class="tile"><div class="k">Possible duplicates</div><div class="v" style="color:${dups ? 'var(--bad)' : 'var(--ok)'}">${dups}</div></div>
+    </div>
+    <div class="card scroll">${!show.length ? `<p class="muted">No entries match for ${monthName(S.month)}.</p>` : `
+    <table><thead><tr><th>Date</th><th>Employee</th><th>Paid to / note</th><th>Type</th><th>Project</th><th class="n">Amount</th><th>Status</th><th></th></tr></thead><tbody>` +
+    keys.map(k => `<tr class="grp"><td colspan="5">${h(k)}</td><td class="n">${money(sum(groups[k]))}</td><td colspan="2"></td></tr>` +
+      groups[k].sort((a, b) => a.date.localeCompare(b.date)).map(r => `<tr class="${r.billable ? '' : 'off'} ${r.fee ? '' : 'click'}" data-open="${r.fee ? '' : r.id}"><td class="nw">${r.date}</td><td>${h(r.employee_name)}</td>
+        <td>${noteCell(r)}${sentBack(r)}${r.dup ? ` <span class="pill bad">possible duplicate of ${h(dupText(r.dup))}</span>` : ''}${mismatch(r) ? ` <span class="pill submitted">receipt reads ${money(r.receipt_amount)}</span>` : ''}${!r.fee && !r.receipt_url && r.status === 'submitted' ? ' <span class="pill nb">no receipt</span>' : ''}</td>
+        <td>${h(r.cat)} ${r.fee ? '<span class="pill fee">fee</span>' : ''}</td><td>${h(r.proj)}</td><td class="n">${money(r.amt)}</td>
+        <td>${statusPills(r, true)}</td>
+        <td class="nw">${locked ? '' : (r.status !== 'approved' ? `<button class="sm" data-a="ok:${r.t}:${r.id}">Approve</button> ` : '') + (r.status !== 'returned' ? `<button class="sm" data-a="back:${r.t}:${r.id}">Send back</button> ` : '')}${r.fee ? (locked ? '' : `<button class="sm danger" data-a="del:${r.t}:${r.id}">Delete</button>`) : `<button class="sm" data-a="open:${r.t}:${r.id}">Open</button>`}</td></tr>`).join('')).join('') +
+    `</tbody></table>`}</div>`;
+  const rv = $('#rv');
+  if ($('#reopen')) $('#reopen').onclick = async () => { if (await ask(`Reopen ${monthName(S.month)} so entries can be changed again?`, 'Reopen')) { await setClosed(S.month, false); paintReview(); } };
+  if ($('#close')) $('#close').onclick = async () => {
+    if (wait.length && !(await ask(`${wait.length} entr${wait.length === 1 ? 'y is' : 'ies are'} still waiting for review. Close ${monthName(S.month)} anyway?`, 'Close month'))) return;
+    if (!wait.length && !(await ask(`Close ${monthName(S.month)}? Entries in it can no longer be changed until you reopen it.`, 'Close month'))) return;
+    await setClosed(S.month, true); paintReview(); };
+  const find = (t, id) => S.R.find(x => x.t === t && String(x.id) === id);
+  rv.querySelectorAll('tr[data-open]').forEach(tr => tr.onclick = (e) => { if (e.target.closest('button') || !tr.dataset.open) return; entryDialog(find('expenses', tr.dataset.open), loadReview); });
+  rv.querySelectorAll('[data-a]').forEach(b => b.onclick = async () => {
+    const [a, t, id] = b.dataset.a.split(':'), r = find(t, id);
+    try {
+      if (a === 'open') return entryDialog(r, loadReview);
+      if (a === 'ok') { b.disabled = true; await update(t, id, {status: 'approved', review_note: null}); log(t, r.id, 'approved'); r.status = 'approved'; r.review_note = null; return paintReview(); }
+      if (a === 'back') {
+        const v = await formDialog(`Send back to ${r.employee_name}`, [{k: 'note', label: 'What needs fixing? They will see this.', type: 'area', required: true}], {}, 'Send back');
+        if (!v || !v.note) return;
+        await update(t, id, {status: 'returned', review_note: v.note.slice(0, 490)}); log(t, r.id, 'sent back', v.note);
+        r.status = 'returned'; r.review_note = v.note; return paintReview();
+      }
+      if (a === 'del') {
+        if (!(await ask(`Delete this event fee for good? ${r.employee_name}, ${r.date}, ${money(r.amt)}.`, 'Delete'))) return;
+        await remove(t, id); log(t, r.id, 'deleted', `${r.cat}, ${money(r.amt)}`); loadReview();
+      }
+    } catch (x) { tell(x.message); b.disabled = false; }
+  });
+}
+function download(name, rows) {
+  const csv = rows.map(r => r.map(c => { c = String(c ?? ''); return /[",\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c; }).join(',')).join('\r\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type: 'text/csv'})); a.download = name; a.click();
+}
+async function exportFreshbooks() {
+  const rows = S.R.filter(r => r.billable), wait = rows.filter(r => r.status !== 'approved').length;
+  if (!rows.length) return tell('Nothing to export for this month.');
+  if (wait && !(await ask(`${wait} billable entr${wait === 1 ? 'y is' : 'ies are'} not approved yet and will be left out. Continue?`, 'Continue'))) return;
+  const out = rows.filter(r => r.status === 'approved').sort((a, b) => (a.short || '').localeCompare(b.short || '') || (a.proj || '').localeCompare(b.proj || '') || a.date.localeCompare(b.date));
+  if (!out.length) return tell('No approved billable entries to export yet.');
+  download(`EXPENSES FOR BILLING - ${S.month}.csv`, [['DATE', 'AMOUNT', 'CATEGORY', 'DESCRIPTION', 'CLIENT']].concat(
+    out.map(r => [r.date, r.amt.toFixed(2), r.fb || r.cat, (r.proj || '').toUpperCase(), r.short || r.client])));
+  const todo = out.filter(r => !r.billed_on);
+  if (isClosed(S.month) || !todo.length) return;
+  if (!(await ask(`The file has ${out.length} line${out.length === 1 ? '' : 's'} totalling ${money(sum(out))}. Mark ${todo.length === out.length ? 'them' : todo.length + ' not yet marked'} as billed and close ${monthName(S.month)}?`, 'Mark billed and close'))) return;
+  $('#rv').innerHTML = '<p class="muted">Marking entries as billed…</p>';
+  await inChunks(todo, (r) => update(r.t, r.id, {billed_on: today()}));
+  log('batches', 0, 'exported and billed', `${monthName(S.month)}: ${out.length} lines, ${money(sum(out))}`);
+  await setClosed(S.month, true); loadReview();
+}
+async function exportReimb() {
+  const ok = S.R.filter(r => !r.fee && r.status === 'approved' && !r.reimbursed_on), t = {};
+  ok.forEach(r => { const e = t[r.employee_name] = t[r.employee_name] || {b: 0, n: 0, c: 0}; r.billable ? e.b += r.amt : e.n += r.amt; e.c++; });
+  const names = Object.keys(t).sort(); if (!names.length) return tell('Nobody is owed anything for this month: there are no approved, unreimbursed expenses.');
+  download(`REIMBURSEMENTS - ${S.month}.csv`, [['EMPLOYEE', 'ENTRIES', 'BILLABLE', 'COMPANY', 'TOTAL OWED']].concat(names.map(n => [n, t[n].c, t[n].b.toFixed(2), t[n].n.toFixed(2), (t[n].b + t[n].n).toFixed(2)])));
+  if (isClosed(S.month)) return tell('The file is downloaded. To mark these as reimbursed, reopen the month first.');
+  if (!(await ask(`The file lists ${money(sum(ok))} owed to ${names.length} ${names.length === 1 ? 'person' : 'people'}. Mark these ${ok.length} entries as reimbursed? Do this once the payments have gone out.`, 'Mark reimbursed'))) return;
+  $('#rv').innerHTML = '<p class="muted">Marking entries as reimbursed…</p>';
+  await inChunks(ok, (r) => update('expenses', r.id, {reimbursed_on: today()}));
+  log('batches', 0, 'marked reimbursed', `${monthName(S.month)}: ${ok.length} entries, ${money(sum(ok))}`);
+  loadReview();
+}
+
+// ---------- reports ----------
+async function drawReports() {
+  const m = $('#main'); m.innerHTML = '<p class="muted">Loading…</p>';
+  const mine = isAdmin() ? '' : `&user_id=${encodeURIComponent(S.user.id)}`;
+  const [ex, ev] = await Promise.all([readAll('expenses', mine), readAll('events_worked', mine)]);
+  const all = ex.map(decE).concat(ev.map(decV)); S.All = ex.map(decE); setVendors(S.All);
+  const uniq = (k) => [...new Set(all.map(r => r[k]).filter(Boolean))].sort().map(v => ({id: v, name: v}));
+  const yr = today().slice(0, 4), F = S.rep = S.rep || {from: yr + '-01-01', to: today(), group: 'employee'};
+  m.innerHTML = `<div class="card">
+    <div class="row" style="justify-content:space-between;margin-bottom:10px"><h2 style="margin:0">Reports${isAdmin() ? '' : ' on my expenses'}</h2>
+      <div class="row"><button class="sm" data-q="month">This month</button><button class="sm" data-q="last">Last month</button><button class="sm" data-q="year">This year</button><button class="sm" data-q="all">All time</button><button class="sm" id="rclear">Clear filters</button></div></div>
+    <div class="filters">
+      <div><label>From</label><input type="date" id="r_from" value="${h(F.from)}"></div>
+      <div><label>To</label><input type="date" id="r_to" value="${h(F.to)}"></div>
+      ${isAdmin() ? `<div><label>Employee</label><select id="r_employee">${opt(uniq('employee_name'), F.employee, 'name', 'Everyone')}</select></div>` : ''}
+      <div><label>Vendor</label><select id="r_vendor">${opt(uniq('vendor'), F.vendor, 'name', 'Any vendor')}</select></div>
+      <div><label>Client</label><select id="r_client">${opt(uniq('client'), F.client, 'name', 'Any client')}</select></div>
+      <div><label>Project</label><select id="r_proj">${opt(uniq('proj'), F.proj, 'name', 'Any project')}</select></div>
+      <div><label>Type</label><select id="r_cat">${opt(uniq('cat'), F.cat, 'name', 'Any type')}</select></div>
+      <div><label>Who pays</label><select id="r_pay"><option value="">Either</option><option value="1" ${F.pay === '1' ? 'selected' : ''}>Billed to a client</option><option value="0" ${F.pay === '0' ? 'selected' : ''}>Company expense</option></select></div>
+      <div><label>Status</label><select id="r_status">${opt([{id: 'submitted', name: 'Waiting for review'}, {id: 'approved', name: 'Approved'}, {id: 'returned', name: 'Sent back'}, {id: 'unbilled', name: 'Approved, not yet billed'}, {id: 'billed', name: 'Billed'}, {id: 'unpaid', name: 'Approved, not yet reimbursed'}, {id: 'paid', name: 'Reimbursed'}], F.status, 'name', 'Any status')}</select></div>
+      <div><label>Subtotal by</label><select id="r_group">${opt([{id: 'employee', name: 'Employee'}, {id: 'vendor', name: 'Vendor'}, {id: 'client', name: 'Client'}, {id: 'proj', name: 'Project'}, {id: 'cat', name: 'Type'}, {id: 'month', name: 'Month'}], F.group, 'name', 'No subtotals')}</select></div>
+    </div>
+    <div id="rout"></div></div>`;
+  const ids = ['from', 'to', 'employee', 'vendor', 'client', 'proj', 'cat', 'pay', 'status', 'group'];
+  const run = () => {
+    ids.forEach(k => { const el = $('#r_' + k); if (el) F[k] = el.value; });
+    const rows = all.filter(r => (!F.from || r.date >= F.from) && (!F.to || r.date <= F.to) && (!F.employee || r.employee_name === F.employee) && (!F.vendor || r.vendor === F.vendor) &&
+      (!F.client || r.client === F.client) && (!F.proj || r.proj === F.proj) && (!F.cat || r.cat === F.cat) && (!F.pay || String(r.billable ? 1 : 0) === F.pay) &&
+      (!F.status || (F.status === 'unbilled' ? r.status === 'approved' && r.billable && !r.billed_on : F.status === 'billed' ? !!r.billed_on
+        : F.status === 'unpaid' ? r.status === 'approved' && !r.fee && !r.reimbursed_on : F.status === 'paid' ? !!r.reimbursed_on : r.status === F.status)))
+      .sort((a, b) => a.date.localeCompare(b.date));
+    const gk = (r) => ({employee: r.employee_name, vendor: r.vendor || '(no vendor)', client: r.billable ? (r.client || '(no client)') : 'Company expense', proj: r.proj || '(no project)', cat: r.cat || '(no type)', month: monthName(r.date.slice(0, 7))}[F.group]);
+    const G = {}; if (F.group) rows.forEach(r => { const k = gk(r); G[k] = G[k] || {n: 0, t: 0, first: r.date}; G[k].n++; G[k].t += r.amt; });
+    const gkeys = Object.keys(G).sort((a, b) => (F.group === 'month' ? G[a].first.localeCompare(G[b].first) : G[b].t - G[a].t));
+    const cap = 400, total = sum(rows);
+    $('#rout').innerHTML = `
+      <div class="tiles">
+        <div class="tile"><div class="k">Entries</div><div class="v">${rows.length}</div></div>
+        <div class="tile"><div class="k">Total</div><div class="v">${money(total)}</div></div>
+        <div class="tile"><div class="k">Billed to clients</div><div class="v">${money(sum(rows.filter(r => r.billable)))}</div></div>
+        <div class="tile"><div class="k">Company expenses</div><div class="v">${money(sum(rows.filter(r => !r.billable)))}</div></div>
+      </div>
+      ${!rows.length ? '<p class="muted">Nothing matches these filters.</p>' : `
+      <div class="row" style="justify-content:flex-end;margin-bottom:8px"><button class="pri" id="rdl">Download this report</button></div>
+      ${F.group ? `<div class="scroll" style="margin-bottom:16px"><table><thead><tr><th>${h($('#r_group').selectedOptions[0].text)}</th><th class="n">Entries</th><th class="n">Total</th><th class="n">Share</th></tr></thead><tbody>` +
+        gkeys.map(k => `<tr><td>${h(k)}</td><td class="n">${G[k].n}</td><td class="n">${money(G[k].t)}</td><td class="n">${total ? Math.round(G[k].t / total * 100) : 0}%</td></tr>`).join('') +
+        `</tbody><tfoot><tr><td><b>Total</b></td><td class="n"><b>${rows.length}</b></td><td class="n"><b>${money(total)}</b></td><td></td></tr></tfoot></table></div>` : ''}
+      <div class="scroll"><table><thead><tr><th>Date</th>${isAdmin() ? '<th>Employee</th>' : ''}<th>Paid to / note</th><th>Type</th><th>Client</th><th>Project</th><th class="n">Amount</th><th>Status</th></tr></thead><tbody>` +
+        rows.slice(0, cap).map(r => `<tr class="${r.fee ? '' : 'click'}" data-open="${r.fee ? '' : r.id}"><td class="nw">${r.date}</td>${isAdmin() ? `<td>${h(r.employee_name)}</td>` : ''}<td>${noteCell(r)}</td><td>${h(r.cat)} ${r.fee ? '<span class="pill fee">fee</span>' : ''}</td>
+          <td>${r.billable ? h(r.client) : '<span class="pill nb">company</span>'}</td><td>${h(r.proj)}</td><td class="n">${money(r.amt)}</td><td>${statusPills(r, true)}</td></tr>`).join('') +
+        `</tbody></table></div>${rows.length > cap ? `<p class="muted">Showing the first ${cap} of ${rows.length}. The download has all of them.</p>` : ''}`}`;
+    if ($('#rdl')) $('#rdl').onclick = () => download(`Expense report ${F.from || 'start'} to ${F.to || 'today'}.csv`,
+      [['Date', 'Employee', 'Vendor', 'Receipt no.', 'Type', 'Client', 'Project', 'Who pays', 'Amount', 'Status', 'Billed on', 'Reimbursed on', 'Paid by', 'Note']].concat(
+        rows.map(r => [r.date, r.employee_name, r.vendor, r.receipt_number, r.cat, r.client, r.proj, r.billable ? 'Client' : 'Company', r.amt.toFixed(2), STATUS[r.status] || r.status,
+          String(r.billed_on || '').slice(0, 10), String(r.reimbursed_on || '').slice(0, 10), r.payment_method, r.description])));
+    $('#rout').querySelectorAll('tr[data-open]').forEach(tr => tr.onclick = () => { if (!tr.dataset.open) return; const r = all.find(x => x.t === 'expenses' && String(x.id) === tr.dataset.open); r.dup = null; entryDialog(r, drawReports); });
+  };
+  ids.forEach(k => { const el = $('#r_' + k); if (el) el.onchange = run; });
+  m.querySelectorAll('[data-q]').forEach(b => b.onclick = () => {
+    const d = new Date(), ym = (x) => x.toLocaleDateString('en-CA').slice(0, 7), q = b.dataset.q;
+    if (q === 'month') { $('#r_from').value = ym(d) + '-01'; $('#r_to').value = today(); }
+    if (q === 'last') { const p = new Date(d.getFullYear(), d.getMonth() - 1, 1), e = new Date(d.getFullYear(), d.getMonth(), 0); $('#r_from').value = p.toLocaleDateString('en-CA'); $('#r_to').value = e.toLocaleDateString('en-CA'); }
+    if (q === 'year') { $('#r_from').value = yr + '-01-01'; $('#r_to').value = today(); }
+    if (q === 'all') { $('#r_from').value = ''; $('#r_to').value = ''; }
+    run(); });
+  $('#rclear').onclick = () => { S.rep = null; drawReports(); };
+  run();
+}
+
+// ---------- settings (reviewer) ----------
+async function drawSettings(which) {
+  S.setTab = which || S.setTab || 'clients';
+  const tabs = [['clients', 'Clients'], ['projects', 'Projects'], ['types', 'Expense types'], ['fees', 'Event fees'], ['rates', 'Rates and company']];
+  const m = $('#main');
+  const yes = (v) => (v ? '<span class="pill approved">Yes</span>' : '<span class="pill nb">No</span>');
+  let body = '';
+  if (S.setTab === 'clients') {
+    const q = (S.setQ || '').toLowerCase(), list = S.L.allClients.filter(c => !q || c.name.toLowerCase().includes(q)).sort((a, b) => (b.active - a.active) || a.name.localeCompare(b.name));
+    body = `<div class="row" style="margin-bottom:10px"><div style="flex:1;max-width:320px"><label>Find a client</label><input id="sq" value="${h(S.setQ || '')}" placeholder="Start typing a name"></div><span class="sp"></span><button class="pri" data-add="clients">Add client</button></div>
+      <p class="muted">Only clients marked "In use" appear in the lists staff pick from. ${S.L.clients.length} of ${S.L.allClients.length} are in use.</p>
+      <div class="scroll"><table><thead><tr><th>Client</th><th>Name on the FreshBooks file</th><th>In use</th><th></th></tr></thead><tbody>` +
+      list.map(c => `<tr class="${c.active ? '' : 'off'}"><td>${h(c.name)}</td><td>${h(c.short_name)}</td><td>${yes(c.active)}</td><td class="nw"><button class="sm" data-edit="clients:${c.id}">Edit</button></td></tr>`).join('') + '</tbody></table></div>';
+  } else if (S.setTab === 'projects') {
+    const list = S.L.allProjects.slice().sort((a, b) => (C(a.client_id).name || '').localeCompare(C(b.client_id).name || '') || a.name.localeCompare(b.name));
+    body = `<div class="row" style="margin-bottom:10px"><span class="sp"></span><button class="pri" data-add="projects">Add project</button></div>
+      <div class="scroll"><table><thead><tr><th>Client</th><th>Project / title</th><th>In use</th><th></th></tr></thead><tbody>` +
+      list.map(p => `<tr class="${p.active ? '' : 'off'}"><td>${h(C(p.client_id).name)}</td><td>${h(p.name)}</td><td>${yes(p.active)}</td><td class="nw"><button class="sm" data-edit="projects:${p.id}">Edit</button></td></tr>`).join('') + '</tbody></table></div>';
+  } else if (S.setTab === 'types') {
+    body = `<div class="row" style="margin-bottom:10px"><span class="sp"></span><button class="pri" data-add="categories">Add expense type</button></div>
+      <div class="scroll"><table><thead><tr><th>Expense type</th><th>Name on the FreshBooks file</th><th>Normally billed to a client</th><th>Entered as miles</th><th></th></tr></thead><tbody>` +
+      S.L.categories.map(c => `<tr><td>${h(c.name)}</td><td>${h(c.freshbooks_name)}</td><td>${yes(c.billable_default)}</td><td>${yes(c.is_mileage)}</td><td class="nw"><button class="sm" data-edit="categories:${c.id}">Edit</button></td></tr>`).join('') + '</tbody></table></div>';
+  } else if (S.setTab === 'fees') {
+    body = `<div class="row" style="margin-bottom:10px"><span class="sp"></span><button class="pri" data-add="event_types">Add event fee</button></div>
+      <p class="muted">When a staff member records an event they worked, this fee is added to the client's bill.</p>
+      <div class="scroll"><table><thead><tr><th>Event</th><th class="n">Fee</th><th>In use</th><th></th></tr></thead><tbody>` +
+      S.L.allEventTypes.map(e => `<tr class="${e.active ? '' : 'off'}"><td>${h(e.name)}</td><td class="n">${money(e.fee)}</td><td>${yes(e.active)}</td><td class="nw"><button class="sm" data-edit="event_types:${e.id}">Edit</button></td></tr>`).join('') + '</tbody></table></div>';
+  } else {
+    body = `<form id="rates" style="max-width:420px">
+      <div style="margin-bottom:12px"><label>Mileage rate, dollars per mile</label><input name="mileage_rate" type="number" step="0.001" min="0" value="${h(S.L.set.mileage_rate || '')}" required></div>
+      <div style="margin-bottom:12px"><label>Company name shown at the top</label><input name="company_name" value="${h(S.L.set.company_name || '')}" required></div>
+      <button class="pri">Save</button> <span id="rmsg" class="muted"></span></form>
+      <p class="muted" style="margin-top:14px">The mileage rate applies to new entries only. Entries already saved keep the amount they were saved with.</p>`;
+  }
+  m.innerHTML = `<div class="card"><div class="row" style="justify-content:space-between;margin-bottom:14px"><h2 style="margin:0">Settings</h2>
+    <div class="seg">${tabs.map(([k, t]) => `<button data-st="${k}" class="${S.setTab === k ? 'on' : ''}">${t}</button>`).join('')}</div></div>${body}</div>`;
+  m.querySelectorAll('[data-st]').forEach(b => b.onclick = () => drawSettings(b.dataset.st));
+  if ($('#sq')) { const s = $('#sq'); s.oninput = () => { S.setQ = s.value; drawSettings(); const n = $('#sq'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }; }
+  const defs = {
+    clients: {title: 'client', fields: [{k: 'name', label: 'Client name', required: true}, {k: 'short_name', label: 'Name on the FreshBooks file (e.g. FOCUS)', required: true}, {k: 'active', label: 'In use: show in the lists staff pick from', type: 'check'}], init: {active: 1}},
+    projects: {title: 'project', fields: [{k: 'client_id', label: 'Client', type: 'select', options: S.L.allClients.filter(c => c.active), required: true}, {k: 'name', label: 'Project / title', required: true}, {k: 'active', label: 'In use', type: 'check'}], init: {active: 1}},
+    categories: {title: 'expense type', fields: [{k: 'name', label: 'Expense type', required: true}, {k: 'freshbooks_name', label: 'Name on the FreshBooks file (e.g. MEALS)', required: true}, {k: 'billable_default', label: 'Normally billed to a client', type: 'check'}, {k: 'is_mileage', label: 'Entered as miles, priced at the mileage rate', type: 'check'}], init: {billable_default: 1}},
+    event_types: {title: 'event fee', fields: [{k: 'name', label: 'Event name as it should appear on the bill', required: true}, {k: 'fee', label: 'Fee in dollars', type: 'number', required: true}, {k: 'active', label: 'In use', type: 'check'}], init: {active: 1}},
+  };
+  const lists = {clients: 'allClients', projects: 'allProjects', categories: 'categories', event_types: 'allEventTypes'};
+  const save = async (table, id) => {
+    const d = defs[table], cur = id ? byId(S.L[lists[table]], id) : d.init;
+    const fields = d.fields.map(f => (f.k === 'client_id' && id ? {...f, options: S.L.allClients.filter(c => c.active || String(c.id) === String(cur.client_id))} : f));
+    const v = await formDialog((id ? 'Edit ' : 'Add ') + d.title, fields, cur); if (!v) return;
+    if (v.client_id) v.client_id = +v.client_id;
+    if (table === 'clients') v.short_name = v.short_name.toUpperCase();
+    if (table === 'categories') v.freshbooks_name = v.freshbooks_name.toUpperCase();
+    try {
+      if (id) await update(table, id, v); else await create(table, v);
+      log(table, id || 0, id ? 'changed a setting' : 'added a setting', `${d.title}: ${v.name}`);
+      await loadLookups(); drawSettings();
+    } catch (x) { tell('That could not be saved: ' + x.message); }
+  };
+  m.querySelectorAll('[data-add]').forEach(b => b.onclick = () => save(b.dataset.add));
+  m.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => { const [t, id] = b.dataset.edit.split(':'); save(t, id); });
+  if ($('#rates')) $('#rates').onsubmit = async (e) => {
+    e.preventDefault(); const v = Object.fromEntries(new FormData(e.target));
+    try {
+      for (const k of Object.keys(v)) { const row = S.L.setRows.find(s => s.setting_key === k);
+        if (row) { if (row.setting_value !== v[k]) { await update('settings', row.id, {setting_value: v[k]}); log('settings', row.id, 'changed a setting', `${k} to ${v[k]}`); } }
+        else await create('settings', {setting_key: k, setting_value: v[k]}); }
+      await loadLookups(); $('#rmsg').textContent = 'Saved.';
+    } catch (x) { tell('That could not be saved: ' + x.message); }
+  };
+}
+start();
+</script>
+</body>
+</html>
