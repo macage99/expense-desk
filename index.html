@@ -72,7 +72,7 @@
 <body>
 <header>
   <h1>Expense Desk</h1><span class="co" id="co"></span><span class="sp"></span>
-  <span id="who" class="co"></span><button id="out" class="sm hide">Sign out</button>
+  <span id="who" class="co"></span><button id="pw" class="sm hide">Change password</button><button id="out" class="sm hide">Sign out</button>
 </header>
 <nav id="nav" class="hide"></nav>
 <main id="main"></main>
@@ -148,20 +148,20 @@ function formDialog(title, fields, init = {}, yes = 'Save') {
         : `<div style="margin-bottom:10px"><label>${h(f.label)}</label>${f.type === 'select'
             ? `<select name="${f.k}" ${f.required ? 'required' : ''}>${opt(f.options, init[f.k])}</select>`
             : f.type === 'area' ? `<textarea name="${f.k}" rows="3" ${f.required ? 'required' : ''}>${h(init[f.k])}</textarea>`
-            : `<input name="${f.k}" type="${f.type === 'number' ? 'number' : 'text'}" ${f.type === 'number' ? 'step="0.001" min="0"' : ''} value="${h(init[f.k])}" ${f.required ? 'required' : ''}>`}</div>`).join('') +
+            : `<input name="${f.k}" type="${f.type === 'number' ? 'number' : f.type === 'password' ? 'password' : 'text'}" ${f.type === 'password' ? 'autocomplete="' + (f.k === 'current' ? 'current-password' : 'new-password') + '" minlength="8"' : ''} ${f.type === 'number' ? 'step="0.001" min="0"' : ''} value="${h(init[f.k])}" ${f.required ? 'required' : ''}>`}</div>`).join('') +
       `<div class="row" style="justify-content:flex-end;margin-top:14px"><button type="button" id="fx">Cancel</button><button class="pri">${h(yes)}</button></div></form></div>`;
     document.body.appendChild(m);
     const f = $('#fd', m); const first = f.querySelector('input:not([type=checkbox]),select,textarea'); if (first) first.focus();
     $('#fx', m).onclick = () => { m.remove(); res(null); };
     f.onsubmit = (e) => { e.preventDefault(); const v = {};
-      fields.forEach(x => { const el = f.elements[x.k]; v[x.k] = x.type === 'check' ? (el.checked ? 1 : 0) : x.type === 'number' ? numOrNull(el.value) : el.value.trim(); });
+      fields.forEach(x => { const el = f.elements[x.k]; v[x.k] = x.type === 'check' ? (el.checked ? 1 : 0) : x.type === 'number' ? numOrNull(el.value) : x.type === 'password' ? el.value : el.value.trim(); });
       m.remove(); res(v); };
   });
 }
 
 // ---------- sign in ----------
 function authScreen(mode = 'in', err = '') {
-  $('#nav').classList.add('hide'); $('#out').classList.add('hide'); $('#who').textContent = '';
+  $('#nav').classList.add('hide'); $('#out').classList.add('hide'); $('#pw').classList.add('hide'); $('#who').textContent = '';
   $('#main').innerHTML = `<div class="auth"><div class="card">
     <h2>${mode === 'in' ? 'Sign in' : 'Create your account'}</h2>
     ${err ? `<div class="msg err">${h(err)}</div>` : ''}
@@ -184,6 +184,19 @@ function authScreen(mode = 'in', err = '') {
       S.tab = null; start();
     } catch (x) { authScreen(mode, x.message); }
   };
+}
+async function changePassword() {
+  const v = await formDialog('Change your password', [
+    {k: 'current', label: 'Current password', type: 'password', required: true},
+    {k: 'next', label: 'New password (8 characters or more)', type: 'password', required: true},
+    {k: 'again', label: 'New password again', type: 'password', required: true}], {}, 'Change password');
+  if (!v) return;
+  if (v.next !== v.again) return tell('The two new passwords do not match. Nothing was changed.');
+  if (v.next.length < 8) return tell('The new password needs at least 8 characters. Nothing was changed.');
+  try {
+    await receiptCall({action: 'changePassword', email: S.user.email, current: v.current, next: v.next});
+    tell('Your password is changed. Use the new one next time you sign in.');
+  } catch (x) { tell(x.message + ' Nothing was changed.'); }
 }
 async function signOut() {
   try { await api(AUTH, '/sign-out', 'POST', {}); } catch (e) {}
@@ -211,6 +224,7 @@ async function start() {
   } catch (e) { localStorage.removeItem('xd_token'); S.token = null; return authScreen('in', 'Please sign in again.'); }
   $('#who').textContent = S.user.name + (isAdmin() ? ' · Reviewer' : '');
   $('#out').classList.remove('hide'); $('#out').onclick = signOut;
+  $('#pw').classList.remove('hide'); $('#pw').onclick = changePassword;
   S.month = S.month || today().slice(0, 7);
   S.tab = S.tab || (isAdmin() ? 'review' : 'mine');
   drawNav(); draw();
