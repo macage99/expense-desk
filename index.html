@@ -873,7 +873,7 @@ async function importReports(files) {
       const row = {employee_name: who.slice(0, 100), expense_date: d, amount: amt, miles: typeof l.miles === 'number' ? l.miles : null, category_id: cat.id, client_id: c ? c.id : null, project_id: null,
         description: [l.note ? String(l.note).trim() : '', `From ${f.base} p.${l.page || r.first_page}`].filter(Boolean).join(' | ').slice(0, 500), vendor: l.vendor ? String(l.vendor).slice(0, 150) : null,
         receipt_number: l.receipt_number ? String(l.receipt_number).slice(0, 80) : null, billable: hit.none ? 0 : 1, batch_month: month, review_note: flag || null};
-      if (c && title && !/^(NULL|NONE|N\/A)$/.test(title)) {
+      if (c && title && !/^(NULL|NONE|N\/A|ET\.?)$/.test(title)) {
         const p = S.L.allProjects.find(x => x.client_id === c.id && String(x.name).toUpperCase() === title);
         if (p) row.project_id = p.id; else { const key = c.id + '|' + title; if (!newProjects.has(key)) newProjects.set(key, {client_id: c.id, name: title, rows: []}); newProjects.get(key).rows.push(row); }
       }
