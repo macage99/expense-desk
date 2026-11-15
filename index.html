@@ -263,7 +263,8 @@ const STATUS = {submitted: 'Waiting', approved: 'Approved', returned: 'Sent back
 const statusPills = (r, full) => `<span class="pill ${h(r.status)}">${STATUS[r.status] || h(r.status)}</span>` +
   (full && r.billed_on ? ' <span class="pill info">Billed</span>' : '') + (r.reimbursed_on ? ' <span class="pill approved">Reimbursed</span>' : '');
 const noteCell = (r) => `${r.vendor ? `<b>${h(r.vendor)}</b>` : ''}${r.receipt_number ? ` <span class="muted">#${h(r.receipt_number)}</span>` : ''}${r.description ? `${r.vendor || r.receipt_number ? '<br>' : ''}${h(r.description)}` : ''}`;
-const sentBack = (r) => (r.status === 'returned' && r.review_note ? `<div style="color:var(--bad);font-size:13px">Sent back: ${h(r.review_note)}</div>` : '');
+const sentBack = (r) => (r.status === 'returned' && r.review_note ? `<div style="color:var(--bad);font-size:13px">Sent back: ${h(r.review_note)}</div>`
+  : r.status === 'submitted' && r.review_note ? `<div style="color:var(--warn);font-size:13px">Check: ${h(r.review_note)}</div>` : '');
 
 // ---------- receipts ----------
 async function receiptCall(body) {
@@ -702,11 +703,199 @@ function entryDialog(r, onDone) {
 
 // ---------- reviewer ----------
 const mismatch = (r) => !r.fee && r.receipt_amount != null && !r.miles && Math.abs(Number(r.receipt_amount) - r.amt) > 0.005;
+// ---------- import whole expense-report PDFs (reviewers) ----------
+// A monthly PDF is a stack of reports: a cover form (employee, client, project, totals) with its receipts behind it.
+// The PDF is cut into reports here in the browser, each report's pages become pictures, and the AI reader lists the expenses.
+const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+const IMPORT_PAGES = 14;          // most pages sent to the reader in one go
+function loadPdfJs() {
+  if (window.pdfjsLib) return Promise.resolve();
+  return new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = PDFJS + 'pdf.min.js';
+    s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.js'; res(); };
+    s.onerror = () => rej(new Error('The PDF reader could not be loaded. Check the internet connection and try again.'));
+    document.head.appendChild(s);
+  });
+}
+const lineAmt = (l) => Math.round((Number(l && l.amount) || 0) * 100) / 100;
+const repSum = (r) => Math.round((r.lines || []).reduce((s, l) => s + lineAmt(l), 0) * 100) / 100;
+const repGap = (r) => (typeof r.cover_total === 'number' ? Math.round((repSum(r) - r.cover_total) * 100) / 100 : null);
+
+async function pdfPage(pdf, i) {            // one page as text + a JPEG picture
+  const pg = await pdf.getPage(i + 1), v0 = pg.getViewport({scale: 1});
+  const vp = pg.getViewport({scale: Math.min(2, 1500 / Math.max(v0.width, v0.height))});
+  const c = document.createElement('canvas'); c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+  const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+  await pg.render({canvasContext: ctx, viewport: vp}).promise;
+  const data = c.toDataURL('image/jpeg', 0.7).split(',')[1]; c.width = c.height = 0;
+  return {n: i + 1, data};
+}
+async function pdfTexts(pdf) {
+  const out = [];
+  for (let i = 0; i < pdf.numPages; i++) {
+    const t = await (await pdf.getPage(i + 1)).getTextContent();
+    out.push(t.items.map(x => x.str).filter(s => s && s.trim()).join(' | '));
+  }
+  return out;
+}
+function splitReports(texts) {              // [[page indexes]] cut at cover forms; a scan with no readable cover is cut every IMPORT_PAGES pages
+  const n = texts.length, covers = texts.map((t, i) => (/EXPENSE[\s|]*REPORT/i.test(t) ? i : -1)).filter(i => i >= 0);
+  if (!covers.length) { const out = []; for (let i = 0; i < n; i += IMPORT_PAGES) out.push(Array.from({length: Math.min(IMPORT_PAGES, n - i)}, (_, k) => i + k)); return out; }
+  if (covers[0] !== 0) covers.unshift(0);
+  return covers.map((c, k) => Array.from({length: (k + 1 < covers.length ? covers[k + 1] : n) - c}, (_, j) => c + j));
+}
+async function askReader(pdf, texts, pages, cover, year, piece, again) {
+  const pics = []; for (const i of pages) pics.push(await pdfPage(pdf, i));
+  const body = {action: 'readReport', pages: pics, cover: cover + 1, year, piece: piece || '', again: again || '', categories: S.L.categories.map(c => c.name),
+    text: pages.map(i => `--- page ${i + 1} ---\n${(texts[i] || '(no text)').slice(0, 1800)}`).join('\n')};
+  let last;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try { return await receiptCall(body); } catch (x) { last = x; await new Promise(r => setTimeout(r, 1500 * (attempt + 1))); }
+  }
+  throw last;
+}
+async function readOneReport(pdf, texts, pages, year, cost) {
+  const first = pages[0], add = (j) => { cost.input += j.tokens.input; cost.output += j.tokens.output; return j.reports || []; };
+  let reps;
+  if (pages.length <= IMPORT_PAGES) {
+    reps = add(await askReader(pdf, texts, pages, first, year));
+    const off = reps.filter(r => repGap(r) !== null && Math.abs(repGap(r)) > 0.011);
+    if (off.length) {                       // one second look when a report does not add up to its cover
+      const again = 'You answered once already, but it did not add up: ' + off.map(r => `the report on page ${r.cover_page} has lines adding to ${repSum(r).toFixed(2)} while its cover total is ${r.cover_total.toFixed(2)}`).join('; ') +
+        '. Look again for a missed receipt, a missed cover line (mileage is in dollars) or a second cover form, and answer in full again. If the form itself is wrong, keep its figures as written and say so in "problem".';
+      try {
+        const two = add(await askReader(pdf, texts, pages, first, year, '', again)), bad = (a) => a.reduce((s, r) => s + Math.abs(repGap(r) || 0), 0);
+        if (two.length >= reps.length && bad(two) <= bad(reps)) reps = two;
+      } catch (x) { /* keep the first answer */ }
+    }
+  } else {                                  // a long report: the cover plus a slice of its receipts each time
+    const rest = pages.slice(1); reps = null;
+    for (let k = 0; k < rest.length; k += IMPORT_PAGES - 1) {
+      const part = rest.slice(k, k + IMPORT_PAGES - 1);
+      const piece = `\nThis is a long report read in pieces: you have the cover and pages ${part[0] + 1} to ${part[part.length - 1] + 1} only. List only the expenses on these receipt pages${k ? '' : ', plus any cover line that has no receipt at all'}. Its lines will not add up to the cover on their own; that is expected here.`;
+      const d = add(await askReader(pdf, texts, [first].concat(part), first, year, piece));
+      if (!reps) reps = d;
+      else if (d.length) { reps[0].lines = (reps[0].lines || []).concat(d[0].lines || []); if (d[0].problem) reps[0].problem = [reps[0].problem, d[0].problem].filter(Boolean).join('; '); reps = reps.concat(d.slice(1)); }
+    }
+  }
+  return (reps || []).map(r => ({...r, first_page: Number(r.cover_page) || first + 1}));
+}
+
+// Which client a report belongs to, from the file name and what is written on the cover.
+const IMPORT_ALIASES = [['APPL', 'APPLE'], ['MGM', 'AMAZON'], ['FF ', 'FOCUS'], ['PICTURE HOUSE', 'PICTUREHOUSE'], ['MAGNOALIA', 'MAGNOLIA'], ['VERITCAL', 'VERTICAL'], ['FIND ', 'FILM INDEPENDENT'], ['SERIES FEST', 'SERIESFEST']];
+function importClient(fileName, coverClient) {
+  const f = ' ' + fileName.toUpperCase().replace(/\.PDF$/, '').replace(/[^A-Z0-9]+/g, ' ') + ' ';
+  if (/\bNON\s?B/.test(f) || /\bNONBILL/.test(f)) return {none: true};
+  for (const raw of [f, ' ' + String(coverClient || '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ') + ' ']) {
+    let text = raw; IMPORT_ALIASES.forEach(([a, b]) => { if (text.includes(a)) text += ' ' + b + ' '; });
+    let best = null, bestLen = 0;
+    for (const c of S.L.allClients) {
+      const keys = [String(c.short_name || '').toUpperCase(), String(c.name || '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim()];
+      const first = keys[1].split(' ')[0]; if (first.length >= 4) keys.push(first);
+      for (const k of keys) if (k.length >= 3 && text.includes(' ' + k + ' ') && (k.length > bestLen || (k.length === bestLen && c.active && !best.active))) { best = c; bestLen = k.length; }
+    }
+    if (best) return {client: best};
+  }
+  return {unknown: true};
+}
+const IMPORT_CATS = {SUPPLIES: 'OFFICE SUPPLIES', ENTERTAINMENT: 'MEALS', ENTERTAINING: 'MEALS', CABS: 'TRANSPORTATION', PHONE: 'MOBILE PHONE'};
+
+async function importReports(files) {
+  const month = S.month, year = +month.slice(0, 4);
+  if (isClosed(month)) return tell(`${monthName(month)} is closed. Reopen it, or pick another month, before importing.`);
+  const m = document.createElement('div'); m.className = 'modal';
+  m.innerHTML = `<div class="box" style="width:min(760px,96vw)"><b>Import expense reports into ${h(monthName(month))}</b><div id="imp" style="margin-top:12px"></div>
+    <div class="row" style="justify-content:flex-end;margin-top:14px"><button id="impx">Cancel</button><button class="pri hide" id="impok"></button></div></div>`;
+  document.body.appendChild(m);
+  let stop = false; const cost = {input: 0, output: 0}, found = [], lines = [];
+  const box = $('#imp', m), close = () => { stop = true; m.remove(); };
+  $('#impx', m).onclick = close;
+  const paint = () => { box.innerHTML = lines.map(l => `<div style="margin-bottom:6px">${l}</div>`).join(''); };
+  try {
+    lines.push('Getting the PDF reader ready…'); paint();
+    await loadPdfJs(); lines.pop();
+    for (const file of files) {
+      if (stop) return;
+      const base = file.name.replace(/\.pdf$/i, '').trim(), at = lines.length;
+      const already = (S.All || []).filter(r => r.batch_month === month && String(r.description || '').includes(`From ${base} p.`)).length;
+      if (already && !(await ask(`${file.name} looks like it was already imported into ${monthName(month)} (${already} entries). Import it again?`, 'Import again'))) { lines.push(`<b>${h(file.name)}</b>: skipped, already imported.`); paint(); continue; }
+      lines.push(`<b>${h(file.name)}</b>: opening…`); paint();
+      const pdf = await window.pdfjsLib.getDocument({data: new Uint8Array(await file.arrayBuffer())}).promise;
+      const texts = await pdfTexts(pdf), stacks = splitReports(texts); let done = 0; const reps = [];
+      const tick = () => { lines[at] = `<b>${h(file.name)}</b>: reading report ${Math.min(done + 1, stacks.length)} of ${stacks.length} (${pdf.numPages} pages)…`; paint(); };
+      tick();
+      await inChunks(stacks, async (pages) => {
+        if (stop) return;
+        try { (await readOneReport(pdf, texts, pages, year, cost)).forEach(r => reps.push(r)); }
+        catch (x) { reps.push({first_page: pages[0] + 1, employee: '', lines: [], failed: true, problem: `Pages ${pages[0] + 1} to ${pages[pages.length - 1] + 1} could not be read (${x.message}). Enter these by hand.`}); }
+        done++; tick();
+      }, 3);
+      if (stop) return;
+      reps.sort((a, b) => a.first_page - b.first_page);
+      const n = reps.reduce((s, r) => s + (r.lines || []).filter(l => lineAmt(l) > 0).length, 0), total = reps.reduce((s, r) => s + repSum(r), 0);
+      lines[at] = `<b>${h(file.name)}</b>: ${reps.filter(r => !r.failed).length} report${reps.length === 1 ? '' : 's'}, ${n} expense${n === 1 ? '' : 's'}, ${money(total)}`; paint();
+      found.push({file, base, reps}); try { pdf.destroy(); } catch (x) {}
+    }
+  } catch (x) { lines.push(`<span style="color:var(--bad)">${h(x.message)}</span>`); paint(); }
+  if (stop) return;
+
+  // turn what was read into entries
+  const rows = [], flags = [], unknown = new Set(), newProjects = new Map(), wake = new Set();
+  const last = month + '-' + String(new Date(year, +month.slice(5, 7), 0).getDate()).padStart(2, '0');
+  for (const f of found) for (const r of f.reps) {
+    const who = String(r.employee || '').replace(/\s+/g, ' ').trim().replace(/\w\S*/g, w => w[0].toUpperCase() + w.slice(1).toLowerCase()) || 'Unassigned';
+    const hit = importClient(f.file.name, r.client), c = hit.client || null;
+    const gap = repGap(r), notes = [];
+    if (r.problem) notes.push(String(r.problem));
+    if (gap !== null && Math.abs(gap) > 0.011 && !/add|total/i.test(String(r.problem || ''))) notes.push(`Lines add up to ${money(repSum(r))} but the cover form says ${money(r.cover_total)}.`);
+    if (hit.unknown) { notes.push(`Client "${r.client || '?'}" was not recognised; pick the client.`); unknown.add(String(r.client || f.base)); }
+    if (c && !c.active) wake.add(c);
+    const flag = notes.join(' ').slice(0, 480);
+    if (flag) flags.push(`<b>${h(who)}</b> <span class="muted">(${h(f.base)} p.${r.first_page})</span>: ${h(flag)}`);
+    const title = String(r.project || '').replace(/[‘’�]/g, "'").replace(/\s+/g, ' ').trim().toUpperCase().slice(0, 120);
+    for (const l of r.lines || []) {
+      const amt = lineAmt(l); if (amt <= 0) continue;
+      let d = String(l.date || r.report_date || '').slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) d = last;
+      let k = String(l.category || 'Other').toUpperCase(); k = IMPORT_CATS[k] || k;
+      const cat = S.L.categories.find(x => x.name.toUpperCase() === k) || S.L.categories.find(x => x.name.toUpperCase() === 'OTHER') || S.L.categories[0];
+      const row = {employee_name: who.slice(0, 100), expense_date: d, amount: amt, miles: typeof l.miles === 'number' ? l.miles : null, category_id: cat.id, client_id: c ? c.id : null, project_id: null,
+        description: [l.note ? String(l.note).trim() : '', `From ${f.base} p.${l.page || r.first_page}`].filter(Boolean).join(' | ').slice(0, 500), vendor: l.vendor ? String(l.vendor).slice(0, 150) : null,
+        receipt_number: l.receipt_number ? String(l.receipt_number).slice(0, 80) : null, billable: hit.none ? 0 : 1, batch_month: month, review_note: flag || null};
+      if (c && title && !/^(NULL|NONE|N\/A)$/.test(title)) {
+        const p = S.L.allProjects.find(x => x.client_id === c.id && String(x.name).toUpperCase() === title);
+        if (p) row.project_id = p.id; else { const key = c.id + '|' + title; if (!newProjects.has(key)) newProjects.set(key, {client_id: c.id, name: title, rows: []}); newProjects.get(key).rows.push(row); }
+      }
+      rows.push(row);
+    }
+  }
+  const usd = cost.input * 0.10 / 1e6 + cost.output * 0.50 / 1e6, bill = rows.filter(r => r.billable), co = rows.filter(r => !r.billable);
+  if (!rows.length) { lines.push('Nothing to add.'); paint(); $('#impx', m).textContent = 'Close'; return; }
+  lines.push(`<hr style="border:0;border-top:1px solid var(--line);margin:10px 0"><b>${rows.length} entries</b> ready to add as "Waiting for your review": ${bill.length} to bill clients (${money(bill.reduce((s, r) => s + r.amount, 0))})` +
+    (co.length ? `, ${co.length} company expenses (${money(co.reduce((s, r) => s + r.amount, 0))})` : '') + '.');
+  if (newProjects.size) lines.push(`<span class="muted">${newProjects.size} new project${newProjects.size === 1 ? '' : 's'} will be added: ${h([...newProjects.values()].map(p => p.name).slice(0, 6).join(', '))}${newProjects.size > 6 ? '…' : ''}</span>`);
+  if (flags.length) lines.push(`<b style="color:var(--warn)">${flags.length} report${flags.length === 1 ? ' needs' : 's need'} a look:</b><div class="scroll" style="max-height:200px;font-size:13px;margin-top:4px">${flags.map(x => `<div style="margin-bottom:4px">• ${x}</div>`).join('')}</div>`);
+  lines.push(`<span class="muted">AI reading cost for this import: ${usd < 0.01 ? 'under 1 cent' : 'about ' + money(usd)}. Event fees are not on receipts; add those yourself.</span>`);
+  paint();
+  const ok = $('#impok', m); ok.textContent = `Add ${rows.length} entries`; ok.classList.remove('hide');
+  ok.onclick = async () => {
+    ok.disabled = true; $('#impx', m).disabled = true; ok.textContent = 'Adding…';
+    try {
+      for (const c of wake) await update('clients', c.id, {active: 1});
+      for (const p of newProjects.values()) { const j = await create('projects', {name: p.name, client_id: p.client_id, active: 1}); const id = j.id || (j.data && j.data.id); p.rows.forEach(r => { r.project_id = id; }); }
+      for (let i = 0; i < rows.length; i += 200) await receiptCall({action: 'importSave', rows: rows.slice(i, i + 200), note: `${found.map(f => f.base).join(', ')} into ${monthName(month)}: ${rows.length} entries`});
+      m.remove(); await loadLookups(); await loadReview();
+      tell(`${rows.length} entries added to ${monthName(month)}.` + (flags.length ? ` ${flags.length} report${flags.length === 1 ? ' is' : 's are'} flagged: choose Show → "Flagged on import" to see them.` : ''));
+    } catch (x) { ok.disabled = false; $('#impx', m).disabled = false; ok.textContent = `Add ${rows.length} entries`; tell('The entries could not be added: ' + x.message); }
+  };
+}
+
 async function drawReview() {
   $('#main').innerHTML = `
     <div class="row" style="margin-bottom:14px">${monthPicker('rm')}
-      <div><label>Show</label><select id="flt"><option value="all">Everything</option><option value="wait">Waiting for your review</option><option value="back">Sent back, waiting on staff</option><option value="bill">Billable only</option><option value="nb">Company expenses only</option><option value="unbilled">Approved, not yet billed</option><option value="unpaid">Approved, not yet reimbursed</option><option value="dup">Possible duplicates</option></select></div>
+      <div><label>Show</label><select id="flt"><option value="all">Everything</option><option value="wait">Waiting for your review</option><option value="back">Sent back, waiting on staff</option><option value="bill">Billable only</option><option value="nb">Company expenses only</option><option value="unbilled">Approved, not yet billed</option><option value="unpaid">Approved, not yet reimbursed</option><option value="dup">Possible duplicates</option><option value="flag">Flagged on import</option></select></div>
       <span class="sp"></span>
+      <button id="impBtn" title="Bring in a monthly expense-report PDF: the reports and receipts inside are read and listed for you to review">Import expense report</button>
+      <input type="file" id="impFile" accept="application/pdf,.pdf" multiple class="hide">
       <button id="appAll">Approve all waiting</button>
       <button class="pri" id="exp">Download FreshBooks file</button>
       <button id="reimb">Download reimbursements</button>
@@ -714,6 +903,8 @@ async function drawReview() {
     <div id="rv"><p class="muted">Loading…</p></div>`;
   $('#rm').onchange = (e) => { S.month = e.target.value; loadReview(); };
   $('#flt').onchange = () => paintReview();
+  $('#impBtn').onclick = () => $('#impFile').click();
+  $('#impFile').onchange = (e) => { const f = [...e.target.files]; e.target.value = ''; if (f.length) importReports(f); };
   $('#appAll').onclick = async () => {
     const w = S.R.filter(r => r.status === 'submitted'); if (!w.length) return tell('Nothing is waiting.');
     const d = w.filter(r => r.dup).length;
@@ -746,7 +937,7 @@ function paintReview() {
   const ok = R.filter(r => r.status === 'approved'), unbilled = ok.filter(r => r.billable && !r.billed_on), unpaid = ok.filter(r => !r.fee && !r.reimbursed_on);
   const dups = R.filter(r => r.dup).length;
   const show = R.filter(r => f === 'all' || (f === 'wait' && r.status === 'submitted') || (f === 'back' && r.status === 'returned') || (f === 'bill' && r.billable) || (f === 'nb' && !r.billable) ||
-    (f === 'unbilled' && unbilled.includes(r)) || (f === 'unpaid' && unpaid.includes(r)) || (f === 'dup' && r.dup));
+    (f === 'unbilled' && unbilled.includes(r)) || (f === 'unpaid' && unpaid.includes(r)) || (f === 'dup' && r.dup) || (f === 'flag' && r.status === 'submitted' && r.review_note));
   const groups = {}; show.forEach(r => { const k = r.billable ? (r.client || 'No client') : 'Company expenses (not billed)'; (groups[k] = groups[k] || []).push(r); });
   const keys = Object.keys(groups).sort((a, b) => (a.startsWith('Company') ? 1 : 0) - (b.startsWith('Company') ? 1 : 0) || a.localeCompare(b));
   $('#appAll').disabled = locked;
