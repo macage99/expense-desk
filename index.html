@@ -824,8 +824,6 @@ async function importReports(files) {
     for (const file of files) {
       if (stop) return;
       const base = file.name.replace(/\.pdf$/i, '').trim(), at = lines.length;
-      const before = (S.All || []).filter(r => String(r.description || '').includes(`From ${base} p.`)), already = before.length;
-      if (already && !(await ask(`${file.name} looks like it was already imported (${already} entries in ${[...new Set(before.map(r => monthName(r.batch_month)))].join(', ')}). Import it again?`, 'Import again'))) { lines.push(`<b>${h(file.name)}</b>: skipped, already imported.`); paint(); continue; }
       lines.push(`<b>${h(file.name)}</b>: opening…`); paint();
       const pdf = await window.pdfjsLib.getDocument({data: new Uint8Array(await file.arrayBuffer())}).promise;
       const texts = await pdfTexts(pdf), stacks = splitReports(texts); let done = 0; const reps = [];
@@ -841,7 +839,14 @@ async function importReports(files) {
       reps.sort((a, b) => a.first_page - b.first_page);
       const n = reps.reduce((s, r) => s + (r.lines || []).filter(l => lineAmt(l) > 0).length, 0), total = reps.reduce((s, r) => s + repSum(r), 0);
       lines[at] = `<b>${h(file.name)}</b>: ${reps.filter(r => !r.failed).length} report${reps.length === 1 ? '' : 's'}, ${n} expense${n === 1 ? '' : 's'}, ${money(total)}`; paint();
-      found.push({file, base, reps}); try { pdf.destroy(); } catch (x) {}
+      try { pdf.destroy(); } catch (x) {}
+      // The same file names come back every month, so "already imported" means the same expenses, not just the same name.
+      const before = (S.All || []).filter(r => String(r.description || '').includes(`From ${base} p.`));
+      const same = before.length ? reps.flatMap(r => (r.lines || []).filter(l => lineAmt(l) > 0).map(l => ({a: lineAmt(l), d: String(l.date || r.report_date || '').slice(0, 10)})))
+        .map(l => before.find(b => Math.abs(Number(b.amount) - l.a) < 0.005 && String(b.expense_date || '').slice(0, 10) === l.d)).filter(Boolean) : [];
+      if (n && same.length * 2 >= n && !(await ask(`${file.name} looks like it was already imported: ${same.length} of its ${n} expense${n === 1 ? '' : 's'} match entries in ${[...new Set(same.map(r => monthName(r.batch_month)))].join(', ')}. Import it again?`, 'Import again'))) {
+        lines[at] = `<b>${h(file.name)}</b>: skipped, already imported.`; paint(); continue; }
+      found.push({file, base, reps});
     }
   } catch (x) { lines.push(`<span style="color:var(--bad)">${h(x.message)}</span>`); paint(); }
   if (stop) return;
