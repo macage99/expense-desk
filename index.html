@@ -150,7 +150,7 @@ function formDialog(title, fields, init = {}, yes = 'Save') {
         : `<div style="margin-bottom:10px"><label>${h(f.label)}</label>${f.type === 'select'
             ? `<select name="${f.k}" ${f.required ? 'required' : ''}>${opt(f.options, init[f.k])}</select>`
             : f.type === 'area' ? `<textarea name="${f.k}" rows="3" ${f.required ? 'required' : ''}>${h(init[f.k])}</textarea>`
-            : `<input name="${f.k}" type="${f.type === 'number' ? 'number' : f.type === 'password' ? 'password' : 'text'}" ${f.type === 'password' ? 'autocomplete="' + (f.k === 'current' ? 'current-password' : 'new-password') + '" minlength="8"' : ''} ${f.type === 'number' ? 'step="0.001" min="0"' : ''} value="${h(init[f.k])}" ${f.required ? 'required' : ''}>`}</div>`).join('') +
+            : `<input name="${f.k}" type="${f.type === 'number' ? 'number' : f.type === 'password' ? 'password' : f.type === 'month' ? 'month' : 'text'}" ${f.type === 'password' ? 'autocomplete="' + (f.k === 'current' ? 'current-password' : 'new-password') + '" minlength="8"' : ''} ${f.type === 'number' ? 'step="0.001" min="0"' : ''} value="${h(init[f.k])}" ${f.required ? 'required' : ''}>`}</div>`).join('') +
       `<div class="row" style="justify-content:flex-end;margin-top:14px"><button type="button" id="fx">Cancel</button><button class="pri">${h(yes)}</button></div></form></div>`;
     document.body.appendChild(m);
     const f = $('#fd', m); const first = f.querySelector('input:not([type=checkbox]),select,textarea'); if (first) first.focus();
@@ -802,9 +802,8 @@ const IMPORT_CATS = {SUPPLIES: 'OFFICE SUPPLIES', ENTERTAINMENT: 'MEALS', ENTERT
 
 async function importReports(files) {
   const month = S.month, year = +month.slice(0, 4);
-  if (isClosed(month)) return tell(`${monthName(month)} is closed. Reopen it, or pick another month, before importing.`);
   const m = document.createElement('div'); m.className = 'modal';
-  m.innerHTML = `<div class="box" style="width:min(760px,96vw)"><b>Import expense reports into ${h(monthName(month))}</b><div id="imp" style="margin-top:12px"></div>
+  m.innerHTML = `<div class="box" style="width:min(760px,96vw)"><b>Import expense reports</b><div id="imp" style="margin-top:12px"></div>
     <div class="row" style="justify-content:flex-end;margin-top:14px"><button id="impx">Cancel</button><button class="pri hide" id="impok"></button></div></div>`;
   document.body.appendChild(m);
   let stop = false; const cost = {input: 0, output: 0}, found = [], lines = [];
@@ -817,8 +816,8 @@ async function importReports(files) {
     for (const file of files) {
       if (stop) return;
       const base = file.name.replace(/\.pdf$/i, '').trim(), at = lines.length;
-      const already = (S.All || []).filter(r => r.batch_month === month && String(r.description || '').includes(`From ${base} p.`)).length;
-      if (already && !(await ask(`${file.name} looks like it was already imported into ${monthName(month)} (${already} entries). Import it again?`, 'Import again'))) { lines.push(`<b>${h(file.name)}</b>: skipped, already imported.`); paint(); continue; }
+      const before = (S.All || []).filter(r => String(r.description || '').includes(`From ${base} p.`)), already = before.length;
+      if (already && !(await ask(`${file.name} looks like it was already imported (${already} entries in ${[...new Set(before.map(r => monthName(r.batch_month)))].join(', ')}). Import it again?`, 'Import again'))) { lines.push(`<b>${h(file.name)}</b>: skipped, already imported.`); paint(); continue; }
       lines.push(`<b>${h(file.name)}</b>: opening…`); paint();
       const pdf = await window.pdfjsLib.getDocument({data: new Uint8Array(await file.arrayBuffer())}).promise;
       const texts = await pdfTexts(pdf), stacks = splitReports(texts); let done = 0; const reps = [];
@@ -870,23 +869,93 @@ async function importReports(files) {
   }
   const usd = cost.input * 0.10 / 1e6 + cost.output * 0.50 / 1e6, bill = rows.filter(r => r.billable), co = rows.filter(r => !r.billable);
   if (!rows.length) { lines.push('Nothing to add.'); paint(); $('#impx', m).textContent = 'Close'; return; }
+  const perMonth = {}; rows.forEach(r => { const k = r.expense_date.slice(0, 7); perMonth[k] = (perMonth[k] || 0) + 1; });
+  const dated = Object.keys(perMonth).sort((a, b) => perMonth[b] - perMonth[a])[0];
+  let target = isClosed(dated) ? month : dated;      // start on the month the receipts are dated in
   lines.push(`<hr style="border:0;border-top:1px solid var(--line);margin:10px 0"><b>${rows.length} entries</b> ready to add as "Waiting for your review": ${bill.length} to bill clients (${money(bill.reduce((s, r) => s + r.amount, 0))})` +
     (co.length ? `, ${co.length} company expenses (${money(co.reduce((s, r) => s + r.amount, 0))})` : '') + '.');
   if (newProjects.size) lines.push(`<span class="muted">${newProjects.size} new project${newProjects.size === 1 ? '' : 's'} will be added: ${h([...newProjects.values()].map(p => p.name).slice(0, 6).join(', '))}${newProjects.size > 6 ? '…' : ''}</span>`);
   if (flags.length) lines.push(`<b style="color:var(--warn)">${flags.length} report${flags.length === 1 ? ' needs' : 's need'} a look:</b><div class="scroll" style="max-height:200px;font-size:13px;margin-top:4px">${flags.map(x => `<div style="margin-bottom:4px">• ${x}</div>`).join('')}</div>`);
   lines.push(`<span class="muted">AI reading cost for this import: ${usd < 0.01 ? 'under 1 cent' : 'about ' + money(usd)}. Event fees are not on receipts; add those yourself.</span>`);
+  lines.push(`<div style="background:var(--soft);border-radius:8px;padding:12px;margin-top:10px"><label style="font-weight:600;color:var(--ink)">Billing month for these entries</label>
+    <input type="month" id="impMonth" value="${target}" style="max-width:220px"><div id="impNote" style="font-size:13px;margin-top:8px"></div></div>`);
   paint();
-  const ok = $('#impok', m); ok.textContent = `Add ${rows.length} entries`; ok.classList.remove('hide');
+  const ok = $('#impok', m), pick = $('#impMonth', m), note = $('#impNote', m); ok.classList.remove('hide');
+  const showMonth = () => {
+    target = pick.value; const good = /^\d{4}-\d{2}$/.test(target), shut = good && isClosed(target), msg = [];
+    if (good) msg.push(`Most of these receipts are dated <b>${h(monthName(dated))}</b>.`);
+    if (good && target !== dated) msg.push(`<span style="color:var(--warn)">You are putting them into <b>${h(monthName(target))}</b>, a different month. That is fine for late receipts; otherwise change the month above.</span>`);
+    if (good && target === dated && target !== month) msg.push(`You were viewing ${h(monthName(month))}; the screen will switch to ${h(monthName(target))} after adding.`);
+    if (shut) msg.push(`<span style="color:var(--bad)">${h(monthName(target))} is closed. Pick another month, or reopen it first.</span>`);
+    if (!good) msg.push('<span style="color:var(--bad)">Pick a month.</span>');
+    note.innerHTML = msg.join('<br>'); ok.disabled = !good || shut;
+    ok.textContent = good ? `Add ${rows.length} entries to ${monthName(target)}` : `Add ${rows.length} entries`;
+  };
+  pick.oninput = showMonth; pick.onchange = showMonth; showMonth();
   ok.onclick = async () => {
-    ok.disabled = true; $('#impx', m).disabled = true; ok.textContent = 'Adding…';
+    const label = ok.textContent, month = target;      // from here on "month" is the month that was confirmed
+    ok.disabled = true; $('#impx', m).disabled = true; pick.disabled = true; ok.textContent = 'Adding…';
     try {
+      rows.forEach(r => { r.batch_month = month; });
       for (const c of wake) await update('clients', c.id, {active: 1});
       for (const p of newProjects.values()) { const j = await create('projects', {name: p.name, client_id: p.client_id, active: 1}); const id = j.id || (j.data && j.data.id); p.rows.forEach(r => { r.project_id = id; }); }
       for (let i = 0; i < rows.length; i += 200) await receiptCall({action: 'importSave', rows: rows.slice(i, i + 200), note: `${found.map(f => f.base).join(', ')} into ${monthName(month)}: ${rows.length} entries`});
-      m.remove(); await loadLookups(); await loadReview();
+      m.remove(); S.month = month; if ($('#rm')) $('#rm').value = month; await loadLookups(); await loadReview();
       tell(`${rows.length} entries added to ${monthName(month)}.` + (flags.length ? ` ${flags.length} report${flags.length === 1 ? ' is' : 's are'} flagged: choose Show → "Flagged on import" to see them.` : ''));
-    } catch (x) { ok.disabled = false; $('#impx', m).disabled = false; ok.textContent = `Add ${rows.length} entries`; tell('The entries could not be added: ' + x.message); }
+    } catch (x) { ok.disabled = false; $('#impx', m).disabled = false; pick.disabled = false; ok.textContent = label; tell('The entries could not be added: ' + x.message); }
   };
+}
+
+// ---- Part 2: the files imported into a month, with Move (to another month) and Remove for a whole file at once
+function importGroups(month) {
+  const g = {};
+  (S.All || []).filter(r => r.batch_month === month).forEach(r => { const f = /From (.+?) p\.\d+\s*$/.exec(String(r.description || '')); if (f) (g[f[1]] = g[f[1]] || []).push(r); });
+  return g;
+}
+function importsDialog() {
+  const month = S.month, g = importGroups(month), names = Object.keys(g).sort((a, b) => a.localeCompare(b)), locked = isClosed(month);
+  if (!names.length) return tell(`No imported files in ${monthName(month)}. Entries brought in with "Import expense report" are listed here by file.`);
+  const m = document.createElement('div'); m.className = 'modal';
+  const done = (r) => r.billed_on || r.reimbursed_on;
+  m.innerHTML = `<div class="box" style="width:min(820px,96vw)"><b>Files imported into ${h(monthName(month))}</b>
+    <p class="muted" style="margin:6px 0 10px">Move sends every entry from a file to another billing month. Remove deletes every entry that came from it. Entries already billed or reimbursed are left alone.</p>
+    ${locked ? `<div class="msg lock">${h(monthName(month))} is closed, so its files cannot be moved or removed. Reopen the month first.</div>` : ''}
+    <div class="scroll" style="max-height:55vh"><table><thead><tr><th>File</th><th class="n">Entries</th><th class="n">Total</th><th>Status</th><th></th></tr></thead><tbody>` +
+    names.map((n, i) => { const r = g[n], w = r.filter(x => x.status === 'submitted').length, a = r.filter(x => x.status === 'approved').length, b = r.filter(done).length;
+      return `<tr><td>${h(n)}</td><td class="n">${r.length}</td><td class="n">${money(sum(r))}</td><td class="muted" style="font-size:13px">${[w ? w + ' waiting' : '', a ? a + ' approved' : '', b ? b + ' billed or reimbursed' : ''].filter(Boolean).join(', ')}</td>
+        <td class="nw">${locked ? '' : `<button class="sm" data-mv="${i}">Move</button> <button class="sm danger" data-rm="${i}">Remove</button>`}</td></tr>`; }).join('') +
+    `</tbody></table></div><div class="row" style="justify-content:flex-end;margin-top:14px"><button id="imlx">Close</button></div></div>`;
+  document.body.appendChild(m);
+  $('#imlx', m).onclick = () => m.remove();
+  const gone = (rows) => { const ids = new Set(rows.map(r => String(r.id))), out = (r) => r.t === 'expenses' && ids.has(String(r.id)); S.All = S.All.filter(r => !out(r)); S.R = S.R.filter(r => !out(r)); paintReview(); };
+  const kept = (n) => (n ? ` ${n} entr${n === 1 ? 'y was' : 'ies were'} left where ${n === 1 ? 'it was' : 'they were'} because ${n === 1 ? 'it is' : 'they are'} already billed or reimbursed.` : '');
+  m.querySelectorAll('[data-mv]').forEach(b => b.onclick = async () => {
+    const name = names[+b.dataset.mv], all = g[name], go = all.filter(r => !done(r));
+    if (!go.length) return tell('Every entry from this file is already billed or reimbursed, so none can be moved.');
+    const v = await formDialog(`Move ${name}`, [{k: 'to', label: `Move its ${go.length} entr${go.length === 1 ? 'y' : 'ies'} from ${monthName(month)} to`, type: 'month', required: true}], {to: month}, 'Move');
+    if (!v) return;
+    if (!/^\d{4}-\d{2}$/.test(v.to)) return tell('Pick a month.');
+    if (v.to === month) return tell(`These entries are already in ${monthName(month)}.`);
+    if (isClosed(v.to)) return tell(`${monthName(v.to)} is closed. Reopen it first, or pick another month.`);
+    if (!(await ask(`Move ${go.length} entr${go.length === 1 ? 'y' : 'ies'} (${money(sum(go))}) from ${monthName(month)} to ${monthName(v.to)}?`, 'Move'))) return;
+    m.querySelectorAll('button').forEach(x => { x.disabled = true; });
+    try {
+      await inChunks(go, (r) => update('expenses', r.id, {batch_month: v.to}));
+      log('expenses', 0, 'moved an imported file', `${name}: ${go.length} entries from ${monthName(month)} to ${monthName(v.to)}`);
+      m.remove(); gone(go); tell(`${go.length} entr${go.length === 1 ? 'y' : 'ies'} from ${name} moved to ${monthName(v.to)}.` + kept(all.length - go.length));
+    } catch (x) { m.remove(); await loadReview(); tell('Not everything could be moved: ' + x.message + ' Open Imports again to see what is left.'); }
+  });
+  m.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => {
+    const name = names[+b.dataset.rm], all = g[name], go = all.filter(r => !done(r));
+    if (!go.length) return tell('Every entry from this file is already billed or reimbursed, so none can be removed.');
+    if (!(await ask(`Remove ${go.length} entr${go.length === 1 ? 'y' : 'ies'} (${money(sum(go))}) that came from ${name}? This cannot be undone. You can import the file again afterwards.`, 'Remove'))) return;
+    m.querySelectorAll('button').forEach(x => { x.disabled = true; });
+    try {
+      await inChunks(go, (r) => remove('expenses', r.id));
+      log('expenses', 0, 'removed an imported file', `${name}: ${go.length} entries from ${monthName(month)}`);
+      m.remove(); gone(go); tell(`${go.length} entr${go.length === 1 ? 'y' : 'ies'} from ${name} removed.` + kept(all.length - go.length));
+    } catch (x) { m.remove(); await loadReview(); tell('Not everything could be removed: ' + x.message + ' Open Imports again to see what is left.'); }
+  });
 }
 
 async function drawReview() {
@@ -896,6 +965,7 @@ async function drawReview() {
       <span class="sp"></span>
       <button id="impBtn" title="Bring in a monthly expense-report PDF: the reports and receipts inside are read and listed for you to review">Import expense report</button>
       <input type="file" id="impFile" accept="application/pdf,.pdf" multiple class="hide">
+      <button id="impList" title="The files imported into this month: move a whole file to another month, or remove it">Imports</button>
       <button id="appAll">Approve all waiting</button>
       <button class="pri" id="exp">Download FreshBooks file</button>
       <button id="reimb">Download reimbursements</button>
@@ -904,6 +974,7 @@ async function drawReview() {
   $('#rm').onchange = (e) => { S.month = e.target.value; loadReview(); };
   $('#flt').onchange = () => paintReview();
   $('#impBtn').onclick = () => $('#impFile').click();
+  $('#impList').onclick = importsDialog;
   $('#impFile').onchange = (e) => { const f = [...e.target.files]; e.target.value = ''; if (f.length) importReports(f); };
   $('#appAll').onclick = async () => {
     const w = S.R.filter(r => r.status === 'submitted'); if (!w.length) return tell('Nothing is waiting.');
