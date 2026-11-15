@@ -130,7 +130,7 @@ function log(table, id, action, detail = '') {
 function dialog(msg, yes, no) {
   return new Promise((res) => {
     const m = document.createElement('div'); m.className = 'modal';
-    m.innerHTML = `<div class="box" style="max-width:440px"><p style="margin:4px 0 16px">${h(msg)}</p>
+    m.innerHTML = `<div class="box" style="max-width:440px"><p style="margin:4px 0 16px;white-space:pre-line">${h(msg)}</p>
       <div class="row" style="justify-content:flex-end">${no ? `<button id="dn">${h(no)}</button>` : ''}<button class="pri" id="dy">${h(yes)}</button></div></div>`;
     document.body.appendChild(m);
     const done = (v) => { m.remove(); res(v); };
@@ -906,7 +906,7 @@ async function drawReports() {
 // ---------- settings (reviewer) ----------
 async function drawSettings(which) {
   S.setTab = which || S.setTab || 'clients';
-  const tabs = [['clients', 'Clients'], ['projects', 'Projects'], ['types', 'Expense types'], ['fees', 'Event fees'], ['rates', 'Rates and company']];
+  const tabs = [['clients', 'Clients'], ['projects', 'Projects'], ['types', 'Expense types'], ['fees', 'Event fees'], ['rates', 'Rates and company'], ['people', 'People']];
   const m = $('#main');
   const yes = (v) => (v ? '<span class="pill approved">Yes</span>' : '<span class="pill nb">No</span>');
   let body = '';
@@ -930,8 +930,24 @@ async function drawSettings(which) {
       <p class="muted">When a staff member records an event they worked, this fee is added to the client's bill.</p>
       <div class="scroll"><table><thead><tr><th>Event</th><th class="n">Fee</th><th>In use</th><th></th></tr></thead><tbody>` +
       S.L.allEventTypes.map(e => `<tr class="${e.active ? '' : 'off'}"><td>${h(e.name)}</td><td class="n">${money(e.fee)}</td><td>${yes(e.active)}</td><td class="nw"><button class="sm" data-edit="event_types:${e.id}">Edit</button></td></tr>`).join('') + '</tbody></table></div>';
+  } else if (S.setTab === 'people') {
+    if (!S.people) {
+      body = '<p class="muted">Loading people...</p>';
+      receiptCall({action: 'people'}).then(j => { S.people = j.people; S.meId = j.me; }).catch(x => { S.people = []; S.peopleErr = x.message; }).then(() => { if (S.tab === 'settings' && S.setTab === 'people') drawSettings(); });
+    } else if (S.peopleErr) {
+      body = `<p class="muted">${h(S.peopleErr)}</p><button class="sm" id="pAgain">Try again</button>`;
+    } else {
+      const list = S.people.slice().sort((a, b) => (a.off - b.off) || a.name.localeCompare(b.name));
+      body = `<div class="row" style="margin-bottom:10px"><span class="sp"></span><button class="pri" id="pAdd">Add person</button></div>
+      <p class="muted">Staff enter their own expenses and see only their own. Reviewers see everyone's, approve, download the billing file and change these settings.</p>
+      <div class="scroll"><table><thead><tr><th>Name</th><th>Email (what they sign in with)</th><th>Role</th><th>Access</th><th></th></tr></thead><tbody>` +
+      list.map(u => `<tr class="${u.off ? 'off' : ''}"><td>${h(u.name)}${u.id === S.meId ? ' <span class="muted">(you)</span>' : ''}</td><td>${h(u.email)}</td>
+        <td>${u.role === 'admin' ? '<span class="pill approved">Reviewer</span>' : '<span class="pill nb">Staff</span>'}</td>
+        <td>${u.off ? '<span class="pill returned">Turned off</span>' : 'On'}</td>
+        <td class="nw"><button class="sm" data-p="edit:${u.id}">Edit</button> <button class="sm" data-p="reset:${u.id}">${u.off ? 'Turn back on' : 'New password'}</button>${u.id === S.meId ? '' : (u.off ? '' : ` <button class="sm" data-p="off:${u.id}">Turn off</button>`) + ` <button class="sm danger" data-p="remove:${u.id}">Remove</button>`}</td></tr>`).join('') + '</tbody></table></div>';
+    }
   } else {
-    body = `<form id="rates" style="max-width:420px">
+    body = `<form id="rates\" style="max-width:420px">
       <div style="margin-bottom:12px"><label>Mileage rate, dollars per mile</label><input name="mileage_rate" type="number" step="0.001" min="0" value="${h(S.L.set.mileage_rate || '')}" required></div>
       <div style="margin-bottom:12px"><label>Company name shown at the top</label><input name="company_name" value="${h(S.L.set.company_name || '')}" required></div>
       <button class="pri">Save</button> <span id="rmsg" class="muted"></span></form>
@@ -961,6 +977,39 @@ async function drawSettings(which) {
       await loadLookups(); drawSettings();
     } catch (x) { tell('That could not be saved: ' + x.message); }
   };
+  const roles = [{id: 'user', name: 'Staff: enters their own expenses'}, {id: 'admin', name: 'Reviewer: sees everyone, approves, bills, settings'}];
+  const pCall = async (body, what) => {
+    try { const j = await receiptCall({action: 'people', ...body}); S.people = j.people; S.meId = j.me; log('people', 0, what.split('|')[0], what.split('|')[1] || ''); drawSettings(); return j; }
+    catch (x) { tell(x.message); return null; }
+  };
+  const showPw = (u, pw, lead) => tell(`${lead}\n\nEmail: ${u.email}\nTemporary password: ${pw}\n\nWrite this down or copy it now and give it to ${u.name}. It will not be shown again. They can change it after signing in, with "Change password" at the top.`);
+  if ($('#pAgain')) $('#pAgain').onclick = () => { S.people = null; S.peopleErr = null; drawSettings(); };
+  if ($('#pAdd')) $('#pAdd').onclick = async () => {
+    const v = await formDialog('Add a person', [{k: 'name', label: 'Full name', required: true}, {k: 'email', label: 'Email address (they sign in with this)', required: true}, {k: 'role', label: 'Role', type: 'select', options: roles, required: true}], {role: 'user'}, 'Add person');
+    if (!v) return;
+    const j = await pCall({todo: 'add', name: v.name, email: v.email, role: v.role}, `added a person|${v.name} as ${v.role === 'admin' ? 'reviewer' : 'staff'}`);
+    if (j) showPw({name: v.name, email: v.email.toLowerCase()}, j.password, `${v.name} can now sign in.`);
+  };
+  m.querySelectorAll('[data-p]').forEach(b => b.onclick = async () => {
+    const [a, id] = b.dataset.p.split(':'), u = S.people.find(x => x.id === id); if (!u) return;
+    if (a === 'edit') {
+      const me = u.id === S.meId;
+      const v = await formDialog(`Edit ${u.name}`, [{k: 'name', label: 'Full name', required: true}].concat(me ? [] : [{k: 'role', label: 'Role', type: 'select', options: roles, required: true}]), u);
+      if (!v) return;
+      if (v.name !== u.name && !(await pCall({todo: 'rename', id, name: v.name}, `renamed a person|${u.name} to ${v.name}`))) return;
+      if (!me && v.role !== u.role) await pCall({todo: 'role', id, role: v.role}, `changed a role|${v.name} is now ${v.role === 'admin' ? 'a reviewer' : 'staff'}`);
+    } else if (a === 'reset') {
+      if (!(await ask(u.off ? `Turn ${u.name}'s access back on? They get a new temporary password.` : `Give ${u.name} a new temporary password? Their current password stops working right away.`, u.off ? 'Turn back on' : 'New password'))) return;
+      b.disabled = true; const j = await pCall({todo: 'reset', id}, `${u.off ? 'turned access back on' : 'reset a password'}|${u.name}`);
+      if (j) showPw(u, j.password, `${u.name} has a new temporary password.`);
+    } else if (a === 'off') {
+      if (!(await ask(`Turn off ${u.name}'s access? They will not be able to sign in. Everything they entered is kept, and you can turn them back on later.`, 'Turn off'))) return;
+      b.disabled = true; await pCall({todo: 'off', id}, `turned off access|${u.name}`);
+    } else if (a === 'remove') {
+      if (!(await ask(`Remove ${u.name} for good? This only works for someone who has no saved entries.`, 'Remove'))) return;
+      b.disabled = true; await pCall({todo: 'remove', id}, `removed a person|${u.name}`);
+    }
+  });
   m.querySelectorAll('[data-add]').forEach(b => b.onclick = () => save(b.dataset.add));
   m.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => { const [t, id] = b.dataset.edit.split(':'); save(t, id); });
   if ($('#rates')) $('#rates').onsubmit = async (e) => {
