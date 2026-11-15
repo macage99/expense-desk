@@ -177,14 +177,22 @@ function authScreen(mode = 'in', err = '') {
   </div></div>`;
   $('#af').onsubmit = async (e) => {
     e.preventDefault();
-    const f = Object.fromEntries(new FormData(e.target));
-    S.token = null;
+    const form = e.target, f = Object.fromEntries(new FormData(form)), btn = form.querySelector('button'), label = btn.textContent;
+    S.token = null; btn.disabled = true; btn.textContent = 'Checking…';
     try {
       const j = await api(AUTH, mode === 'in' ? '/sign-in/email' : '/sign-up/email', 'POST', f);
       S.token = j.token; localStorage.setItem('xd_token', j.token);
       localStorage.setItem('xd_user', JSON.stringify(j.user));
       S.tab = null; start();
-    } catch (x) { authScreen(mode, x.message); }
+    } catch (x) {
+      // keep what was typed; only the password is cleared, and the message goes away as soon as they type again
+      btn.disabled = false; btn.textContent = label;
+      let box = $('.msg.err', form.parentNode);
+      if (!box) { box = document.createElement('div'); box.className = 'msg err'; form.parentNode.insertBefore(box, form); }
+      box.textContent = x.message + '. Check them and try again.';
+      form.elements.password.value = ''; form.elements.password.focus();
+      form.oninput = () => { box.remove(); form.oninput = null; };
+    }
   };
 }
 async function changePassword() {
