@@ -811,8 +811,8 @@ function importClient(fileName, coverClient) {
 }
 const IMPORT_CATS = {SUPPLIES: 'OFFICE SUPPLIES', ENTERTAINMENT: 'MEALS', ENTERTAINING: 'MEALS', CABS: 'TRANSPORTATION', PHONE: 'MOBILE PHONE'};
 
-async function importReports(files) {
-  const month = S.month, year = +month.slice(0, 4);
+async function importReports(files, chosen) {      // chosen = the billing month the person picked before choosing files
+  const month = chosen || S.month, year = +month.slice(0, 4);
   const m = document.createElement('div'); m.className = 'modal';
   m.innerHTML = `<div class="box" style="width:min(760px,96vw)"><b>Import expense reports</b><div id="imp" style="margin-top:12px"></div>
     <div class="row" style="justify-content:flex-end;margin-top:14px"><button id="impx">Cancel</button><button class="pri hide" id="impok"></button></div></div>`;
@@ -893,7 +893,7 @@ async function importReports(files) {
   if (!rows.length) { lines.push('Nothing to add.'); paint(); $('#impx', m).textContent = 'Close'; return; }
   const perMonth = {}; rows.forEach(r => { const k = r.expense_date.slice(0, 7); perMonth[k] = (perMonth[k] || 0) + 1; });
   const dated = Object.keys(perMonth).sort((a, b) => perMonth[b] - perMonth[a])[0];
-  let target = isClosed(dated) ? month : dated;      // start on the month the receipts are dated in
+  let target = chosen || (isClosed(dated) ? month : dated), settled = !chosen || chosen === dated;      // the person's month stands; a mismatch with the receipt dates has to be settled first
   lines.push(`<hr style="border:0;border-top:1px solid var(--line);margin:10px 0"><b>${rows.length} entries</b> ready to add as "Waiting for your review": ${bill.length} to bill clients (${money(bill.reduce((s, r) => s + r.amount, 0))})` +
     (co.length ? `, ${co.length} company expenses (${money(co.reduce((s, r) => s + r.amount, 0))})` : '') + '.');
   if (newProjects.size) lines.push(`<span class="muted">${newProjects.size} new project${newProjects.size === 1 ? '' : 's'} will be added: ${h([...newProjects.values()].map(p => p.name).slice(0, 6).join(', '))}${newProjects.size > 6 ? '…' : ''}</span>`);
@@ -911,15 +911,19 @@ async function importReports(files) {
   if (repeats.length) $('#impRep', m).onchange = () => showMonth();
   const showMonth = () => {
     target = pick.value; const good = /^\d{4}-\d{2}$/.test(target), shut = good && isClosed(target), msg = [];
-    if (good) msg.push(`Most of these receipts are dated <b>${h(monthName(dated))}</b>.`);
-    if (good && target !== dated) msg.push(`<span style="color:var(--warn)">You are putting them into <b>${h(monthName(target))}</b>, a different month. That is fine for late receipts; otherwise change the month above.</span>`);
-    if (good && target === dated && target !== month) msg.push(`You were viewing ${h(monthName(month))}; the screen will switch to ${h(monthName(target))} after adding.`);
+    if (good && !settled) msg.push(`<div style="border:1px solid var(--bad);border-radius:8px;padding:10px 12px;background:var(--card, #fff)"><b style="color:var(--bad)">Check the month before adding.</b><br>
+      You chose <b>${h(monthName(chosen))}</b>, but ${perMonth[dated]} of these ${rows.length} receipts are dated <b>${h(monthName(dated))}</b>.
+      <div class="row" style="margin-top:8px"><button type="button" class="pri" id="impUse">Use ${h(monthName(dated))}</button><button type="button" id="impKeep">Keep ${h(monthName(chosen))}</button></div></div>`);
+    if (good && settled) msg.push(target === dated ? `This matches the receipts: ${perMonth[dated]} of ${rows.length} are dated <b>${h(monthName(dated))}</b>.` : `Most of these receipts are dated <b>${h(monthName(dated))}</b>.`);
+    if (good && settled && target !== dated) msg.push(`<span style="color:var(--warn)">You are putting them into <b>${h(monthName(target))}</b>, a different month. That is fine for late receipts; otherwise change the month above.</span>`);
+    if (good && settled && target !== S.month) msg.push(`The screen will switch to ${h(monthName(target))} after adding.`);
     if (shut) msg.push(`<span style="color:var(--bad)">${h(monthName(target))} is closed. Pick another month, or reopen it first.</span>`);
     if (!good) msg.push('<span style="color:var(--bad)">Pick a month.</span>');
-    note.innerHTML = msg.join('<br>'); ok.disabled = !good || shut;
+    note.innerHTML = msg.join('<br>'); ok.disabled = !good || shut || !settled;
+    if ($('#impUse', m)) { $('#impUse', m).onclick = () => { settled = true; pick.value = dated; showMonth(); }; $('#impKeep', m).onclick = () => { settled = true; showMonth(); }; }
     const n = use().length; ok.textContent = good ? `Add ${n} entr${n === 1 ? 'y' : 'ies'} to ${monthName(target)}` : `Add ${n} entr${n === 1 ? 'y' : 'ies'}`;
   };
-  pick.oninput = showMonth; pick.onchange = showMonth; showMonth();
+  pick.oninput = pick.onchange = () => { if (pick.value !== target) settled = true; showMonth(); }; showMonth();
   ok.onclick = async () => {
     const label = ok.textContent, month = target, rows = use(), left = repeats.length && $('#impRep', m).checked ? repRows.length : 0;      // from here on "month" is the month that was confirmed and "rows" the entries being added
     ok.disabled = true; $('#impx', m).disabled = true; pick.disabled = true; if ($('#impRep', m)) $('#impRep', m).disabled = true; ok.textContent = 'Adding…';
@@ -1001,9 +1005,15 @@ async function drawReview() {
     <div id="rv"><p class="muted">Loading…</p></div>`;
   $('#rm').onchange = (e) => { S.month = e.target.value; loadReview(); };
   $('#flt').onchange = () => paintReview();
-  $('#impBtn').onclick = () => $('#impFile').click();
+  $('#impBtn').onclick = async () => {      // the month is asked first, with nothing filled in, so it is a deliberate choice
+    const v = await formDialog('Import expense reports', [{k: 'm', label: 'Which billing month are these reports for?', type: 'month', required: true}], {}, 'Choose the files');
+    if (!v) return;
+    if (!/^\d{4}-\d{2}$/.test(v.m)) return tell('Pick a month first.');
+    if (isClosed(v.m)) return tell(`${monthName(v.m)} is closed. Reopen it first, or pick another month.`);
+    S.impMonth = v.m; $('#impFile').click();
+  };
   $('#impList').onclick = importsDialog;
-  $('#impFile').onchange = (e) => { const f = [...e.target.files]; e.target.value = ''; if (f.length) importReports(f); };
+  $('#impFile').onchange = (e) => { const f = [...e.target.files]; e.target.value = ''; if (f.length) importReports(f, S.impMonth); };
   $('#appAll').onclick = async () => {
     const w = S.R.filter(r => r.status === 'submitted'); if (!w.length) return tell('Nothing is waiting.');
     const d = w.filter(r => r.dup).length;
