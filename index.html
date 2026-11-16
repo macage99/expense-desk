@@ -857,6 +857,7 @@ async function importReports(files, chosen) {      // chosen = the billing month
   // turn what was read into entries
   const rows = [], flags = [], unknown = new Set(), newProjects = new Map(), wake = new Set(), seen = new Map(), repeats = [];
   const last = month + '-' + String(new Date(year, +month.slice(5, 7), 0).getDate()).padStart(2, '0');
+  const fixYear = (d) => { if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || +d.slice(0, 4) <= year || (new Date(d) - new Date(last)) / 864e5 < 60) return d; const t = year + d.slice(4); return t <= last ? t : (year - 1) + d.slice(4); };
   for (const f of found) for (const r of f.reps) {
     const who = String(r.employee || '').replace(/\s+/g, ' ').trim().replace(/\w\S*/g, w => w[0].toUpperCase() + w.slice(1).toLowerCase()) || 'Unassigned';
     const hit = importClient(f.file.name, r.client), c = hit.client || null;
@@ -868,14 +869,17 @@ async function importReports(files, chosen) {      // chosen = the billing month
     const flag = notes.join(' ').slice(0, 480);
     if (flag) flags.push(`<b>${h(who)}</b> <span class="muted">(${h(f.base)} p.${r.first_page})</span>: ${h(flag)}`);
     const title = String(r.project || '').replace(/[‘’�]/g, "'").replace(/\s+/g, ' ').trim().toUpperCase().slice(0, 120);
-    // the same report scanned or attached twice: same file, person, project and amounts
-    const amts = (r.lines || []).map(lineAmt).filter(a => a > 0).map(a => a.toFixed(2)).sort().join(',');
-    const rk = amts ? [f.base, who.toLowerCase(), title, amts].join('|') : '', twin = rk ? seen.get(rk) : null;
-    if (rk && !twin) seen.set(rk, r.first_page);
+    // the same report scanned or attached twice: same file, person, project and amounts, and at least half the lines on the same dates
+    // (someone who drives the same route twice in a month hands in two reports with the same amount but different dates: not a repeat)
+    const sig = (r.lines || []).filter(l => lineAmt(l) > 0).map(l => lineAmt(l).toFixed(2) + '@' + fixYear(String(l.date || r.report_date || '').slice(0, 10)));
+    const amts = sig.map(x => x.split('@')[0]).sort().join(',');
+    const rk = amts ? [f.base, who.toLowerCase(), title, amts].join('|') : '', earlier = rk ? (seen.get(rk) || []) : [];
+    const twinRep = earlier.find(e => sig.filter(x => e.sig.includes(x)).length * 2 >= sig.length), twin = twinRep ? twinRep.page : null;
+    if (rk && !twin) seen.set(rk, earlier.concat({page: r.first_page, sig}));
     if (twin) repeats.push({who, base: f.base, page: r.first_page, of: twin, total: repSum(r)});
     for (const l of r.lines || []) {
       const amt = lineAmt(l); if (amt <= 0) continue;
-      let d = String(l.date || r.report_date || '').slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) d = last;
+      let d = fixYear(String(l.date || r.report_date || '').slice(0, 10)); if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) d = last;
       let k = String(l.category || 'Other').toUpperCase(); k = IMPORT_CATS[k] || k;
       const cat = S.L.categories.find(x => x.name.toUpperCase() === k) || S.L.categories.find(x => x.name.toUpperCase() === 'OTHER') || S.L.categories[0];
       const row = {employee_name: who.slice(0, 100), expense_date: d, amount: amt, miles: typeof l.miles === 'number' ? l.miles : null, category_id: cat.id, client_id: c ? c.id : null, project_id: null,
@@ -899,7 +903,7 @@ async function importReports(files, chosen) {      // chosen = the billing month
   if (newProjects.size) lines.push(`<span class="muted">${newProjects.size} new project${newProjects.size === 1 ? '' : 's'} will be added: ${h([...newProjects.values()].map(p => p.name).slice(0, 6).join(', '))}${newProjects.size > 6 ? '…' : ''}</span>`);
   if (flags.length) lines.push(`<b style="color:var(--warn)">${flags.length} report${flags.length === 1 ? ' needs' : 's need'} a look:</b><div class="scroll" style="max-height:200px;font-size:13px;margin-top:4px">${flags.map(x => `<div style="margin-bottom:4px">• ${x}</div>`).join('')}</div>`);
   const repRows = rows.filter(r => r._rep);
-  if (repeats.length) lines.push(`<div style="border:1px solid var(--warn);border-radius:8px;padding:10px 12px"><b style="color:var(--warn)">${repeats.length} report${repeats.length === 1 ? ' looks' : 's look'} like a repeat of an earlier report in the same file</b> (same person, project and amounts):
+  if (repeats.length) lines.push(`<div style="border:1px solid var(--warn);border-radius:8px;padding:10px 12px"><b style="color:var(--warn)">${repeats.length} report${repeats.length === 1 ? ' looks' : 's look'} like a repeat of an earlier report in the same file</b> (same person, project, amounts and dates):
     <div class="scroll" style="max-height:140px;font-size:13px;margin:4px 0 8px">${repeats.map(x => `<div>• <b>${h(x.who)}</b>, ${money(x.total)}: ${h(x.base)} page ${x.page} repeats page ${x.of}</div>`).join('')}</div>
     <label style="font-size:14px;color:var(--ink)"><input type="checkbox" id="impRep" checked>Leave the repeats out (${repRows.length} entr${repRows.length === 1 ? 'y' : 'ies'}, ${money(repRows.reduce((s, r) => s + r.amount, 0))})</label></div>`);
   lines.push(`<span class="muted">AI reading cost for this import: ${usd < 0.01 ? 'under 1 cent' : 'about ' + money(usd)}. Event fees are not on receipts; add those yourself.</span>`);
