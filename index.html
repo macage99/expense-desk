@@ -353,7 +353,10 @@ function dupReason(a, b) {
   if (a.receipt_hash && a.receipt_hash === b.receipt_hash) return 'the same receipt file';
   const va = normKey(a.vendor), vb = normKey(b.vendor), sameAmt = Math.abs(Number(a.amount) - Number(b.amount)) < 0.005;
   if (a.receipt_number && normKey(a.receipt_number) === normKey(b.receipt_number) && (sameAmt || (va && va === vb))) return 'the same receipt number';
-  if (va && va === vb && sameAmt && String(a.expense_date).slice(0, 10) === String(b.expense_date).slice(0, 10)) return 'the same vendor, date and amount';
+  const sameDay = String(a.expense_date).slice(0, 10) === String(b.expense_date).slice(0, 10);
+  if (va && va === vb && sameAmt && sameDay) return 'the same vendor, date and amount';
+  if ((!va || !vb) && sameAmt && sameDay && a.employee_name && normKey(a.employee_name) === normKey(b.employee_name) && a.category_id != null && String(a.category_id) === String(b.category_id)
+      && String(a.client_id || '') === String(b.client_id || '')) return 'the same person, date, amount and type';
   return '';
 }
 function findDup(c, pool) {
@@ -852,7 +855,7 @@ async function importReports(files) {
   if (stop) return;
 
   // turn what was read into entries
-  const rows = [], flags = [], unknown = new Set(), newProjects = new Map(), wake = new Set();
+  const rows = [], flags = [], unknown = new Set(), newProjects = new Map(), wake = new Set(), seen = new Map(), repeats = [];
   const last = month + '-' + String(new Date(year, +month.slice(5, 7), 0).getDate()).padStart(2, '0');
   for (const f of found) for (const r of f.reps) {
     const who = String(r.employee || '').replace(/\s+/g, ' ').trim().replace(/\w\S*/g, w => w[0].toUpperCase() + w.slice(1).toLowerCase()) || 'Unassigned';
@@ -865,6 +868,11 @@ async function importReports(files) {
     const flag = notes.join(' ').slice(0, 480);
     if (flag) flags.push(`<b>${h(who)}</b> <span class="muted">(${h(f.base)} p.${r.first_page})</span>: ${h(flag)}`);
     const title = String(r.project || '').replace(/[‘’�]/g, "'").replace(/\s+/g, ' ').trim().toUpperCase().slice(0, 120);
+    // the same report scanned or attached twice: same file, person, project and amounts
+    const amts = (r.lines || []).map(lineAmt).filter(a => a > 0).map(a => a.toFixed(2)).sort().join(',');
+    const rk = amts ? [f.base, who.toLowerCase(), title, amts].join('|') : '', twin = rk ? seen.get(rk) : null;
+    if (rk && !twin) seen.set(rk, r.first_page);
+    if (twin) repeats.push({who, base: f.base, page: r.first_page, of: twin, total: repSum(r)});
     for (const l of r.lines || []) {
       const amt = lineAmt(l); if (amt <= 0) continue;
       let d = String(l.date || r.report_date || '').slice(0, 10); if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) d = last;
@@ -872,7 +880,8 @@ async function importReports(files) {
       const cat = S.L.categories.find(x => x.name.toUpperCase() === k) || S.L.categories.find(x => x.name.toUpperCase() === 'OTHER') || S.L.categories[0];
       const row = {employee_name: who.slice(0, 100), expense_date: d, amount: amt, miles: typeof l.miles === 'number' ? l.miles : null, category_id: cat.id, client_id: c ? c.id : null, project_id: null,
         description: [l.note ? String(l.note).trim() : '', `From ${f.base} p.${l.page || r.first_page}`].filter(Boolean).join(' | ').slice(0, 500), vendor: l.vendor ? String(l.vendor).slice(0, 150) : null,
-        receipt_number: l.receipt_number ? String(l.receipt_number).slice(0, 80) : null, billable: hit.none ? 0 : 1, batch_month: month, review_note: flag || null};
+        receipt_number: l.receipt_number ? String(l.receipt_number).slice(0, 80) : null, billable: hit.none ? 0 : 1, batch_month: month, review_note: ((twin ? `Looks like a repeat of the report on page ${twin} of this file. ` : '') + flag).slice(0, 480) || null};
+      if (twin) row._rep = true;
       if (c && title && !/^(NULL|NONE|N\/A|ET\.?)$/.test(title)) {
         const p = S.L.allProjects.find(x => x.client_id === c.id && String(x.name).toUpperCase() === title);
         if (p) row.project_id = p.id; else { const key = c.id + '|' + title; if (!newProjects.has(key)) newProjects.set(key, {client_id: c.id, name: title, rows: []}); newProjects.get(key).rows.push(row); }
@@ -889,11 +898,17 @@ async function importReports(files) {
     (co.length ? `, ${co.length} company expenses (${money(co.reduce((s, r) => s + r.amount, 0))})` : '') + '.');
   if (newProjects.size) lines.push(`<span class="muted">${newProjects.size} new project${newProjects.size === 1 ? '' : 's'} will be added: ${h([...newProjects.values()].map(p => p.name).slice(0, 6).join(', '))}${newProjects.size > 6 ? '…' : ''}</span>`);
   if (flags.length) lines.push(`<b style="color:var(--warn)">${flags.length} report${flags.length === 1 ? ' needs' : 's need'} a look:</b><div class="scroll" style="max-height:200px;font-size:13px;margin-top:4px">${flags.map(x => `<div style="margin-bottom:4px">• ${x}</div>`).join('')}</div>`);
+  const repRows = rows.filter(r => r._rep);
+  if (repeats.length) lines.push(`<div style="border:1px solid var(--warn);border-radius:8px;padding:10px 12px"><b style="color:var(--warn)">${repeats.length} report${repeats.length === 1 ? ' looks' : 's look'} like a repeat of an earlier report in the same file</b> (same person, project and amounts):
+    <div class="scroll" style="max-height:140px;font-size:13px;margin:4px 0 8px">${repeats.map(x => `<div>• <b>${h(x.who)}</b>, ${money(x.total)}: ${h(x.base)} page ${x.page} repeats page ${x.of}</div>`).join('')}</div>
+    <label style="font-size:14px;color:var(--ink)"><input type="checkbox" id="impRep" checked>Leave the repeats out (${repRows.length} entr${repRows.length === 1 ? 'y' : 'ies'}, ${money(repRows.reduce((s, r) => s + r.amount, 0))})</label></div>`);
   lines.push(`<span class="muted">AI reading cost for this import: ${usd < 0.01 ? 'under 1 cent' : 'about ' + money(usd)}. Event fees are not on receipts; add those yourself.</span>`);
   lines.push(`<div style="background:var(--soft);border-radius:8px;padding:12px;margin-top:10px"><label style="font-weight:600;color:var(--ink)">Billing month for these entries</label>
     <input type="month" id="impMonth" value="${target}" style="max-width:220px"><div id="impNote" style="font-size:13px;margin-top:8px"></div></div>`);
   paint();
   const ok = $('#impok', m), pick = $('#impMonth', m), note = $('#impNote', m); ok.classList.remove('hide');
+  const use = () => (repeats.length && $('#impRep', m).checked ? rows.filter(r => !r._rep) : rows);
+  if (repeats.length) $('#impRep', m).onchange = () => showMonth();
   const showMonth = () => {
     target = pick.value; const good = /^\d{4}-\d{2}$/.test(target), shut = good && isClosed(target), msg = [];
     if (good) msg.push(`Most of these receipts are dated <b>${h(monthName(dated))}</b>.`);
@@ -902,20 +917,20 @@ async function importReports(files) {
     if (shut) msg.push(`<span style="color:var(--bad)">${h(monthName(target))} is closed. Pick another month, or reopen it first.</span>`);
     if (!good) msg.push('<span style="color:var(--bad)">Pick a month.</span>');
     note.innerHTML = msg.join('<br>'); ok.disabled = !good || shut;
-    ok.textContent = good ? `Add ${rows.length} entries to ${monthName(target)}` : `Add ${rows.length} entries`;
+    const n = use().length; ok.textContent = good ? `Add ${n} entr${n === 1 ? 'y' : 'ies'} to ${monthName(target)}` : `Add ${n} entr${n === 1 ? 'y' : 'ies'}`;
   };
   pick.oninput = showMonth; pick.onchange = showMonth; showMonth();
   ok.onclick = async () => {
-    const label = ok.textContent, month = target;      // from here on "month" is the month that was confirmed
-    ok.disabled = true; $('#impx', m).disabled = true; pick.disabled = true; ok.textContent = 'Adding…';
+    const label = ok.textContent, month = target, rows = use(), left = repeats.length && $('#impRep', m).checked ? repRows.length : 0;      // from here on "month" is the month that was confirmed and "rows" the entries being added
+    ok.disabled = true; $('#impx', m).disabled = true; pick.disabled = true; if ($('#impRep', m)) $('#impRep', m).disabled = true; ok.textContent = 'Adding…';
     try {
       rows.forEach(r => { r.batch_month = month; });
       for (const c of wake) await update('clients', c.id, {active: 1});
-      for (const p of newProjects.values()) { const j = await create('projects', {name: p.name, client_id: p.client_id, active: 1}); const id = j.id || (j.data && j.data.id); p.rows.forEach(r => { r.project_id = id; }); }
+      for (const p of newProjects.values()) { if (!p.rows.some(r => rows.includes(r))) continue; const j = await create('projects', {name: p.name, client_id: p.client_id, active: 1}); const id = j.id || (j.data && j.data.id); p.rows.forEach(r => { r.project_id = id; }); }
       for (let i = 0; i < rows.length; i += 200) await receiptCall({action: 'importSave', rows: rows.slice(i, i + 200), note: `${found.map(f => f.base).join(', ')} into ${monthName(month)}: ${rows.length} entries`});
       m.remove(); S.month = month; if ($('#rm')) $('#rm').value = month; await loadLookups(); await loadReview();
-      tell(`${rows.length} entries added to ${monthName(month)}.` + (flags.length ? ` ${flags.length} report${flags.length === 1 ? ' is' : 's are'} flagged: choose Show → "Flagged on import" to see them.` : ''));
-    } catch (x) { ok.disabled = false; $('#impx', m).disabled = false; pick.disabled = false; ok.textContent = label; tell('The entries could not be added: ' + x.message); }
+      tell(`${rows.length} entries added to ${monthName(month)}.` + (left ? ` ${left} repeated entr${left === 1 ? 'y was' : 'ies were'} left out.` : '') + (flags.length ? ` ${flags.length} report${flags.length === 1 ? ' is' : 's are'} flagged: choose Show → "Flagged on import" to see them.` : ''));
+    } catch (x) { ok.disabled = false; $('#impx', m).disabled = false; pick.disabled = false; if ($('#impRep', m)) $('#impRep', m).disabled = false; ok.textContent = label; tell('The entries could not be added: ' + x.message); }
   };
 }
 
